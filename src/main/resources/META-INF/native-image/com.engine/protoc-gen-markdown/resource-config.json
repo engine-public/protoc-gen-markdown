@@ -1,0 +1,7 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "\\QMETA-INF/com.engine.protoc.markdown/version\\E" }
+    ]
+  }
+}

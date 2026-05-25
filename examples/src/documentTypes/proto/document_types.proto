@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.documenttypes;
+
+option java_package = "com.engine.protoc.markdown.example.documenttypes";
+option java_multiple_files = true;
+
+// Two messages, one enum, one service, exercised under documentTypes=COMPLETE so the
+// fixture shows the aggregate document produced for the whole compile scope.
+enum Color {
+    COLOR_UNSPECIFIED = 0;
+    RED = 1;
+    GREEN = 2;
+    BLUE = 3;
+}
+
+message Pixel {
+    int32 x = 1;
+    int32 y = 2;
+    Color color = 3;
+}
+
+message Frame {
+    string name = 1;
+    repeated Pixel pixels = 2;
+}
+
+service Renderer {
+    rpc DrawFrame(Frame) returns (Frame);
+}
