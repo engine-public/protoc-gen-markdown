@@ -44,8 +44,11 @@ import org.commonmark.renderer.NodeRenderer
 import org.commonmark.renderer.markdown.MarkdownNodeRendererContext
 import org.commonmark.renderer.markdown.MarkdownNodeRendererFactory
 import org.commonmark.renderer.markdown.MarkdownRenderer
+import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.format.DateTimeFormatter
+
+private val log = LoggerFactory.getLogger(Compiler::class.java)
 
 /**
  * Per compile invocation, emits one `.md` file per entry in `request.filesToGenerate`.  Each
@@ -138,7 +141,6 @@ internal class Compiler(
             )
             .build()
     private val parser: Parser = Parser.builder().extensions(listOf(tablesExtension)).build()
-    private val log: System.Logger = System.getLogger("com.engine.protoc.markdown")
 
     /**
      * Every heading the compiler emits is recorded here in document order, populated as a side
@@ -199,6 +201,7 @@ internal class Compiler(
         get() = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE
 
     internal fun compile(): PluginProtos.CodeGeneratorResponse {
+        log.info("compile starting with options: {}", options)
         val response = CodeGeneratorResponseWrapper()
         val collectedFailures = mutableListOf<ReferenceLinkResolver.Failure>()
         for (group in outputGroups) {
@@ -336,9 +339,10 @@ internal class Compiler(
         byPkg.mapNotNull { (pkg, pkgFiles) ->
             val group = packageGroup(pkg, pkgFiles)
             if (group.filename in perFileFilenames) {
-                log.log(
-                    System.Logger.Level.WARNING,
-                    "skipping package index for '${pkg.ifEmpty { "(no package)" }}': filename ${group.filename} collides with a per-file output",
+                log.warn(
+                    "skipping package index for '{}': filename {} collides with a per-file output",
+                    pkg.ifEmpty { "(no package)" },
+                    group.filename,
                 )
                 null
             } else {
@@ -454,7 +458,6 @@ internal class Compiler(
                     options = options,
                     fileToGroup = fileToGroup,
                     mode = options.resolveReferenceLinksMode,
-                    log = log,
                     hrefFor = { file, path -> hrefFor(file, path, group.filename) },
                 )
             } else {
@@ -780,9 +783,10 @@ internal class Compiler(
         val maxOpt = options.maxTableOfContentsHeader
         if (minOpt == null && maxOpt == null) return
         if (minOpt != null && maxOpt != null && minOpt > maxOpt) {
-            log.log(
-                System.Logger.Level.WARNING,
-                "minTableOfContentsHeader=$minOpt > maxTableOfContentsHeader=$maxOpt; no table of contents will be generated",
+            log.warn(
+                "minTableOfContentsHeader={} > maxTableOfContentsHeader={}; no table of contents will be generated",
+                minOpt,
+                maxOpt,
             )
             return
         }

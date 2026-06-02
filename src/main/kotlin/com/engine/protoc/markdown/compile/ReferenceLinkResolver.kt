@@ -8,6 +8,9 @@ import org.commonmark.node.AbstractVisitor
 import org.commonmark.node.Link
 import org.commonmark.node.Node
 import org.commonmark.node.Text
+import org.slf4j.LoggerFactory
+
+private val log = LoggerFactory.getLogger(ReferenceLinkResolver::class.java)
 
 /**
  * Resolves CommonMark shortcut-reference syntax (`[label]`) inside proto leading comments to
@@ -22,19 +25,27 @@ import org.commonmark.node.Text
  * Qualified labels (`[Outer.Inner]`, `[Message.field]`, `[Service.Method]`, …) match
  * directly against the qualified index.
  *
- * Key collisions during indexing — top-level `Foo` plus nested `Outer.Foo` both registering
- * the short key `Foo`, or two enums declaring the same value name — log a warning naming the
- * colliding owners so authors can disambiguate by qualifying.  Under
- * [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID], any comment that
- * actually references an ambiguous or unresolved label is recorded as a [Failure], and the
- * caller (via [failures]) can surface those at end-of-compile.
+ * Logging is reference-driven, not index-driven.  Key collisions during indexing — top-level
+ * `Foo` plus nested `Outer.Foo` both registering the short key `Foo`, or two enums declaring
+ * the same value name — only emit a `debug` line; nothing louder fires until a comment
+ * actually depends on the colliding key.  Per-occurrence access-time logging follows the
+ * configured [mode]:
+ *
+ *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE] — nothing logged (and
+ *    [rewrite] isn't called in this mode).
+ *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.WARN] — each ambiguous or
+ *    unresolved comment reference logs at `warn` with the request site (proto file, comment
+ *    scope, label) and the candidates / reason.
+ *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID] — each failing
+ *    reference logs at `error` with the same request-site details and is recorded as a
+ *    [Failure]; the caller (via [drainFailures]) surfaces the bundle at end-of-compile so
+ *    protoc fails the run.
  */
 internal class ReferenceLinkResolver(
     scopeFiles: List<FileDescriptorProtoWrapper>,
     options: ProtocGenMarkdown.Options,
     fileToGroup: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
     private val mode: ProtocGenMarkdown.Options.ResolveReferenceLinksMode,
-    private val log: System.Logger,
     private val hrefFor: (FileDescriptorProtoWrapper, List<String>) -> String,
 ) {
     /** Global qualified-name index — covers every dotted form of every type and member. */
@@ -279,9 +290,10 @@ internal class ReferenceLinkResolver(
     /**
      * Walk the parsed CommonMark fragment [root] under the given [scopeFqn] and convert every
      * resolvable `[label]` inside a [Text] node into a [Link].  Unresolved labels stay literal;
-     * ambiguous labels resolve to one of the candidates (the rewrite still proceeds) but get
-     * recorded as a [Failure] when [mode] is [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID],
-     * so the caller can fail the compile after all groups have been processed.
+     * ambiguous labels resolve to one of the candidates (the rewrite still proceeds).  Both
+     * outcomes funnel through [reportFailure] so the [mode]-driven log line fires and, under
+     * [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID], the [Failure] is
+     * collected for the caller to surface at end-of-compile.
      */
     fun rewrite(
         root: Node,
@@ -318,12 +330,12 @@ internal class ReferenceLinkResolver(
                     is Outcome.Resolved -> outcome.href
 
                     is Outcome.Ambiguous -> {
-                        recordFailure(scopeFqn, label, FailureReason.Ambiguous(outcome.candidates))
+                        reportFailure(scopeFqn, label, FailureReason.Ambiguous(outcome.candidates))
                         outcome.href
                     }
 
                     Outcome.Unresolved -> {
-                        recordFailure(scopeFqn, label, FailureReason.Unresolved)
+                        reportFailure(scopeFqn, label, FailureReason.Unresolved)
                         continue
                     }
                 }
@@ -341,18 +353,57 @@ internal class ReferenceLinkResolver(
         text.unlink()
     }
 
-    private fun recordFailure(
+    /**
+     * Funnel for every comment-level reference that doesn't resolve cleanly under [scopeFqn].
+     * Logs at a level chosen by [mode] (silent under [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE],
+     * `warn` under [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.WARN], `error` under
+     * [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID]) and, under
+     * `FAIL_ON_INVALID`, also appends a [Failure] so [Compiler] can surface the bundle through
+     * `CodeGeneratorResponse.error` at end of compile.
+     */
+    private fun reportFailure(
         scopeFqn: String,
         label: String,
         reason: FailureReason,
     ) {
-        if (mode != ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID) return
-        collectedFailures += Failure(
-            protoFile = fileByFqn[scopeFqn] ?: "(unknown)",
-            scopeFqn = scopeFqn,
-            label = label,
-            reason = reason,
-        )
+        val protoFile = fileByFqn[scopeFqn] ?: "(unknown)"
+        val scopeDescription = scopeFqn.ifEmpty { "(file scope)" }
+        val reasonDescription =
+            when (reason) {
+                is FailureReason.Unresolved ->
+                    "no matching type, field, enum value, or RPC in compile scope"
+
+                is FailureReason.Ambiguous ->
+                    "ambiguous; candidates: ${reason.candidates.joinToString("; ")}"
+            }
+        when (mode) {
+            ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE -> Unit
+
+            ProtocGenMarkdown.Options.ResolveReferenceLinksMode.WARN ->
+                log.warn(
+                    "reference-link [{}] in {} :: {} — {}",
+                    label,
+                    protoFile,
+                    scopeDescription,
+                    reasonDescription,
+                )
+
+            ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID -> {
+                log.error(
+                    "reference-link [{}] in {} :: {} — {}",
+                    label,
+                    protoFile,
+                    scopeDescription,
+                    reasonDescription,
+                )
+                collectedFailures += Failure(
+                    protoFile = protoFile,
+                    scopeFqn = scopeFqn,
+                    label = label,
+                    reason = reason,
+                )
+            }
+        }
     }
 
     /** Drain (and clear) the failures recorded during [rewrite] calls. */
@@ -363,7 +414,7 @@ internal class ReferenceLinkResolver(
     }
 
     /** Per-map `key → href` index that records every owner registering each key, so collisions
-     *  produce both a warning at index time and an [Outcome.Ambiguous] at resolve time. */
+     *  produce both a `trace` log line at index time and an [Outcome.Ambiguous] at resolve time. */
     private inner class AmbiguityAwareMap(private val mapLabel: String) {
         private val hrefByKey = mutableMapOf<String, String>()
         private val candidatesByKey = mutableMapOf<String, MutableList<Candidate>>()
@@ -378,11 +429,13 @@ internal class ReferenceLinkResolver(
             candidates += Candidate(owner, href)
             val prior = hrefByKey[key]
             if (prior != null && prior != href) {
-                log.log(
-                    System.Logger.Level.WARNING,
-                    "protoc-gen-markdown: reference-link key '$key' in $mapLabel is ambiguous — '$owner' " +
-                        "collides with a prior entry resolving to '$prior'; keeping the latest.  Use a " +
-                        "qualified form to disambiguate in comments.",
+                log.trace(
+                    "reference-link key '{}' in {} is ambiguous — '{}' collides with a prior entry resolving to '{}'; " +
+                        "keeping the latest.  Use a qualified form to disambiguate in comments.",
+                    key,
+                    mapLabel,
+                    owner,
+                    prior,
                 )
             }
             hrefByKey[key] = href
