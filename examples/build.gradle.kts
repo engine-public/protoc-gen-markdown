@@ -63,6 +63,20 @@ val suiteRecorderOptions =
         "referenceLinkSyntax" to listOf(
             "referenceLink=google.rpc.Status=example.com/docs/google.rpc.Status",
         ),
+        /*
+         * Jekyll-plugin suites.  Dumped via `JekyllDumper` (not `Dumper`), so their fixtures are
+         * the `*.frontmatter` fragments `protoc-gen-markdown-jekyll` splices into each document's
+         * `frontmatter` insertion point — not full `.md` documents.  `jekyll` is the defaults
+         * baseline (no `navigationParent`, so the top-tier overview gets no `parent`);
+         * `jekyllNavigationParent` flips the one knob this plugin adds,
+         * `jekyllVisibleNavigationDepth` caps the visible nav tree at the top tier so the
+         * package and per-file pages pick up `nav_exclude: true`, and `jekyllRootNavOrder`
+         * sets `nav_order` on the single top-tier root page only.
+         */
+        "jekyll" to emptyList(),
+        "jekyllNavigationParent" to listOf("navigationParent=Reference"),
+        "jekyllVisibleNavigationDepth" to listOf("visibleNavigationDepth=1"),
+        "jekyllRootNavOrder" to listOf("rootNavOrder=3"),
     )
 
 /*
@@ -75,6 +89,9 @@ val transitiveReferencesSharedProto = layout.projectDirectory.dir("src/transitiv
 
 dependencies {
     testFixturesImplementation(projects.protocGenMarkdown)
+    // JekyllDumper runs the Jekyll plugin; the dependency reaches each Jekyll suite's runtime
+    // classpath transitively through its `implementation(testFixtures(project()))`.
+    testFixturesImplementation(projects.protocGenMarkdownJekyll)
     testFixturesImplementation(libs.protobuf.java)
     testFixturesImplementation(libs.bundles.test.kotest)
 }

@@ -5,7 +5,7 @@ protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=
 # @@protoc_insertion_point(frontmatter)
 ---
 
-# <a id="Overview__engine_protoc_markdown_example_referencelink"></a>Overview: engine.protoc.markdown.example.referencelink
+# <a id="engine_protoc_markdown_example_referencelink"></a>engine.protoc.markdown.example.referencelink
 
 <!-- @@protoc_insertion_point(file_header) -->
 

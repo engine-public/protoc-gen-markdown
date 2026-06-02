@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllvisiblenavigationdepth.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllvisiblenavigationdepth.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `visibleNavigationDepth=1` set, only the top-tier overview page stays visible; the package
+// and per-file pages receive `nav_exclude: true` so just-the-docs drops them from the sidebar.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

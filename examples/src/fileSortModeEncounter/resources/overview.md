@@ -5,7 +5,7 @@ protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=
 # @@protoc_insertion_point(frontmatter)
 ---
 
-# <a id="Overview__engine_protoc_markdown_example_filesortmodeencounter"></a>Overview: engine.protoc.markdown.example.filesortmodeencounter
+# <a id="engine_protoc_markdown_example_filesortmodeencounter"></a>engine.protoc.markdown.example.filesortmodeencounter
 
 <!-- @@protoc_insertion_point(file_header) -->
 

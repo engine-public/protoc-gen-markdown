@@ -5,7 +5,7 @@ protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=
 # @@protoc_insertion_point(frontmatter)
 ---
 
-# <a id="Overview__engine_protoc_markdown_example_transitivereferenceslinkaspeer"></a>Overview: engine.protoc.markdown.example.transitivereferenceslinkaspeer
+# <a id="engine_protoc_markdown_example_transitivereferenceslinkaspeer"></a>engine.protoc.markdown.example.transitivereferenceslinkaspeer
 
 <!-- @@protoc_insertion_point(file_header) -->
 

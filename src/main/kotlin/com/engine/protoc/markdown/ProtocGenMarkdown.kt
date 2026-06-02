@@ -622,4 +622,13 @@ public class ProtocGenMarkdown(
     }
 
     public fun compile(): PluginProtos.CodeGeneratorResponse = Compiler(request, options, clock).compile()
+
+    /**
+     * The documents [compile] would emit for this request and [Options], described as a flat list
+     * with their natural parent → child hierarchy but without rendering any Markdown.  The paths and
+     * titles line up one-to-one with the `.md` files [compile] produces, so a sibling tool — notably
+     * the `protoc-gen-markdown-jekyll` plugin — can position each page in a navigation tree without
+     * re-deriving the layout rules.  See [PlannedDocument].
+     */
+    public fun plan(): List<PlannedDocument> = Compiler(request, options, clock).planDocuments()
 }

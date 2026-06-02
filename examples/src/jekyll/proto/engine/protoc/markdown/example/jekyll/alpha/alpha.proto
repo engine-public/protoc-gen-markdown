@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyll.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyll.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// One of two packages in this suite, so the core plugin emits an overview page, a per-package
+// index for each package, and a per-file page for each proto — the full natural parentage the
+// Jekyll plugin reflects into `parent` frontmatter.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

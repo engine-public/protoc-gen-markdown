@@ -5,7 +5,7 @@ protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=
 # @@protoc_insertion_point(frontmatter)
 ---
 
-# <a id="Overview__engine_protoc_markdown_example_outputtypeperpackage"></a>Overview: engine.protoc.markdown.example.outputtypeperpackage
+# <a id="engine_protoc_markdown_example_outputtypeperpackage"></a>engine.protoc.markdown.example.outputtypeperpackage
 
 <!-- @@protoc_insertion_point(file_header) -->
 
