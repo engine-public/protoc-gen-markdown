@@ -1,7 +1,7 @@
 ---
 generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
 protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
-protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=true,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includePackageIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID
+protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=true,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includeIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID
 # @@protoc_insertion_point(frontmatter)
 ---
 
@@ -133,7 +133,7 @@ Specifies how the customer will be greeted in the [GreetingResponse](hello.md#en
 
 |Name|Number|Description|
 |---|---|---|
-|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected from the available \[GreetingType\] values.|
+|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected from the available [GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType) values.|
 |GREETING\_TYPE\_INFORMAL|1|A greeting appropriate for formal settings.|
 |GREETING\_TYPE\_FORMAT|2|A greeting suited for an old friend.|
 

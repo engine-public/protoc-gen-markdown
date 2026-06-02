@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.transitivereferenceslinkaspeer;
+
+option java_package = "com.engine.protoc.markdown.example.transitivereferenceslinkaspeer";
+option java_multiple_files = true;
+
+import "engine/protoc/markdown/example/transitivereferencesshared/core.proto";
+
+// Exercises transitiveReferences=LINK_AS_PEER (the default) — a reference to [CoreEntity],
+// which lives in the transitive-only `core.proto`, is linked to where the peer `.md`
+// would land if a sibling protoc run rendered `core.proto` with the same options.  No
+// peer `.md` is emitted by this suite, so the link target won't exist in this suite's
+// own output set — but the link shape is the one a parallel render would land on.
+message Consumer {
+    // The entity this consumer wraps; see [CoreEntity].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreEntity entity = 1;
+    // Lifecycle status; see [CoreStatus].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreStatus status = 2;
+}

@@ -26,8 +26,8 @@ val suiteRecorderOptions =
         "generateInsertionPointsOff" to listOf("generateInsertionPoints=false"),
         "tableOfContentsHeadersWide" to listOf("minTableOfContentsHeader=1", "maxTableOfContentsHeader=5"),
         "outputTypePerPackage" to listOf("outputType=PER_PACKAGE", "maxTableOfContentsHeader=4"),
-        "includePackageIndicesOff" to listOf("includePackageIndices=false"),
-        "outputTypePerSession" to listOf("outputType=PER_SESSION", "maxTableOfContentsHeader=4"),
+        "includeIndicesOff" to listOf("includeIndices=false"),
+        "outputTypeSingleFile" to listOf("outputType=SINGLE_FILE", "maxTableOfContentsHeader=4"),
         "typeSortModeEncounter" to listOf("typeSortMode=ENCOUNTER"),
         "fileSortModeEncounter" to listOf("fileSortMode=ENCOUNTER", "outputType=PER_PACKAGE"),
         "rpcSortModeAlphabetical" to listOf("rpcSortMode=ALPHABETICAL"),
@@ -37,7 +37,18 @@ val suiteRecorderOptions =
         "enumValueSortModeNumber" to listOf("enumValueSortMode=NUMBER"),
         "resolveReferenceLinksModeNone" to listOf("resolveReferenceLinksMode=NONE"),
         "resolveReferenceLinksModeWarn" to listOf("resolveReferenceLinksMode=WARN"),
+        "transitiveReferencesNone" to listOf("transitiveReferences=NONE"),
+        "transitiveReferencesLinkAsPeer" to listOf("transitiveReferences=LINK_AS_PEER"),
+        "transitiveReferencesIncludeFiles" to listOf("transitiveReferences=INCLUDE_FILES"),
     )
+
+/*
+ * Source directory holding the transitive-only `core.proto` that the three
+ * `transitiveReferences*` suites import without listing in `filesToGenerate`.  Wired into each
+ * suite's `generate<Suite>Proto` via `addIncludeDir(...)` below so protoc resolves the
+ * import without compiling the file itself.
+ */
+val transitiveReferencesSharedProto = layout.projectDirectory.dir("src/transitiveReferencesShared/proto")
 
 dependencies {
     testFixturesImplementation(projects.protocGenMarkdown)
@@ -127,6 +138,26 @@ protobuf {
              * source sets aren't in `suiteRecorderOptions`, so they short-circuit above.
              */
             if (name == "generate${suiteName.capitalized()}Proto") {
+                if (suiteName.startsWith("transitiveReferences") &&
+                    suiteName != "transitiveReferencesShared"
+                ) {
+                    /*
+                     * Add the shared transitive `core.proto` to protoc's include path
+                     * without listing it in `filesToGenerate` — so it surfaces in the
+                     * recorded `CodeGeneratorRequest.protoFiles` as a transitive dep but
+                     * the plugin under test never sees it in `filesToGenerate`.
+                     *
+                     * Disable the built-in Java codegen here: the consumer protos
+                     * reference types from the transitive `core.proto`, but the
+                     * resulting Java sources for `consumer.proto` would reference
+                     * Java classes that the suite never compiles (since `core.proto`
+                     * isn't in `filesToGenerate`).  The recorder still runs and
+                     * captures the CGR — which is the only output these suites
+                     * actually need.
+                     */
+                    addIncludeDir(files(transitiveReferencesSharedProto))
+                    builtins.removeIf { it.name == "java" }
+                }
                 plugins {
                     create("recorder") {
                         option("logLevel=TRACE")

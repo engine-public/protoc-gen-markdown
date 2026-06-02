@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.transitivereferencesshared;
+
+option java_package = "com.engine.protoc.markdown.example.transitivereferencesshared";
+option java_multiple_files = true;
+
+// A type that lives in the transitive-only dependency.  None of the three
+// transitiveReferences-example suites place this file in `filesToGenerate`; it is
+// added to protoc's `--proto_path` via an `addIncludeDir` call in `examples/build.gradle.kts`,
+// so it surfaces in the request as a transitive dep that consumer.proto imports.
+message CoreEntity {
+    // A label assigned by the originating service.
+    string name = 1;
+    // Free-form description.
+    string description = 2;
+}
+
+// Lifecycle state of a [CoreEntity].
+enum CoreStatus {
+    CORE_STATUS_UNSPECIFIED = 0;
+    CORE_STATUS_ACTIVE = 1;
+    CORE_STATUS_ARCHIVED = 2;
+}
