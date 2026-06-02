@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.outputtypeperpackage;
+
+import "engine/protoc/markdown/example/outputtypeperpackage/core.proto";
+
+option java_package = "com.engine.protoc.markdown.example.outputtypeperpackage";
+option java_multiple_files = true;
+
+// Activity events emitted by `UserService` in `core.proto`.
+//
+// References `User` and `UserRole` across files in the same package; in PER_PACKAGE mode
+// these end up in the same consolidated `package.md`, so the type-cell links collapse to
+// bare `#anchor` rather than `core.md#anchor`.
+
+// One audit-log entry.
+message Event {
+    // The user the event is about.
+    User subject = 1;
+
+    // What the user did.
+    EventKind kind = 2;
+}
+
+// The kind of action recorded by an Event.
+enum EventKind {
+    EVENT_KIND_UNSPECIFIED = 0;
+    EVENT_KIND_CREATED = 1;
+    EVENT_KIND_UPDATED = 2;
+    EVENT_KIND_DELETED = 3;
+}

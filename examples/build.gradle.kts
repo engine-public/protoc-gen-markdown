@@ -21,6 +21,15 @@ val suiteRecorderOptions =
         "generateStableAnchors" to listOf("generateStableAnchors=true"),
         "generateInsertionPoints" to listOf("generateInsertionPoints=true"),
         "tableOfContentsHeaders" to listOf("minTableOfContentsHeader=2", "maxTableOfContentsHeader=3"),
+        "outputTypePerPackage" to listOf("outputType=PER_PACKAGE", "minTableOfContentsHeader=2", "maxTableOfContentsHeader=4", "generateInsertionPoints=true"),
+        "outputTypePerSession" to listOf("outputType=PER_SESSION", "minTableOfContentsHeader=2", "maxTableOfContentsHeader=4", "generateInsertionPoints=true"),
+        "typeSortModeEncounter" to listOf("typeSortMode=ENCOUNTER"),
+        "fileSortModeEncounter" to listOf("fileSortMode=ENCOUNTER", "outputType=PER_PACKAGE"),
+        "rpcSortModeAlphabetical" to listOf("rpcSortMode=ALPHABETICAL"),
+        "fieldSortModeAlphabetical" to listOf("fieldSortMode=ALPHABETICAL"),
+        "fieldSortModeNumber" to listOf("fieldSortMode=NUMBER"),
+        "enumValueSortModeAlphabetical" to listOf("enumValueSortMode=ALPHABETICAL"),
+        "enumValueSortModeNumber" to listOf("enumValueSortMode=NUMBER"),
     )
 
 dependencies {

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.fieldsortmodenumber;
+
+option java_package = "com.engine.protoc.markdown.example.fieldsortmodenumber";
+option java_multiple_files = true;
+
+// Same Widget layout as the sibling fieldSortModeAlphabetical suite — fields whose
+// declaration, alphabetical, and numeric orders are pairwise distinct — so the
+// fixtures can be diffed against each other and against the ENCOUNTER default in
+// the `hello` baseline.
+message Widget {
+    string beta = 10;
+    string alpha = 30;
+    string zeta = 20;
+}

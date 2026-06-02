@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.fieldsortmodealphabetical;
+
+option java_package = "com.engine.protoc.markdown.example.fieldsortmodealphabetical";
+option java_multiple_files = true;
+
+// Fields whose declaration order, alphabetical order, and numeric order are pairwise
+// distinct.  This suite pins fieldSortMode=ALPHABETICAL so the fixture shows the
+// alphabetical-by-name ordering distinct from the ENCOUNTER default in the `hello`
+// baseline and the numeric ordering in the `fieldSortModeNumber` sibling.
+message Widget {
+    string beta = 10;
+    string alpha = 30;
+    string zeta = 20;
+}

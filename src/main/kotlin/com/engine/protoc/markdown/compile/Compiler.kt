@@ -1,6 +1,8 @@
 package com.engine.protoc.markdown.compile
 
 import com.engine.protoc.markdown.ProtocGenMarkdown
+import com.engine.protoc.markdown.ProtocGenMarkdown.Options.MemberSortMode
+import com.engine.protoc.markdown.ProtocGenMarkdown.Options.SortMode
 import com.engine.protoc.markdown.Version
 import com.engine.protoc.util.Locatable
 import com.engine.protoc.util.compiler.CodeGeneratorRequestWrapper
@@ -59,7 +61,11 @@ import java.time.format.DateTimeFormatter
  *    [FrontmatterRenderer].
  *  - A `# <path>` heading carrying the proto's full relative path as protoc reports it.
  *  - A horizontal rule under the title, emitted whenever the file declares at least one service,
- *    message, or enum — independent of the Table of Contents.
+ *    message, or enum — independent of the Table of Contents — plus a rule before every
+ *    subsequent significant section header (the per-file H2 in the consolidated `outputType`
+ *    modes, and every `Services`/`Messages`/`Enums` heading), deduplicated against the
+ *    under-title rule and against any immediately-preceding higher-level heading by
+ *    [appendSectionRule].
  *  - A `<details><summary>Table of contents</summary>` block listing the file's headings as a
  *    nested bullet list of intra-document anchor links.  Opt-in via the `minTableOfContentsHeader`
  *    / `maxTableOfContentsHeader` options (both `null` by default — no TOC); see
@@ -148,9 +154,44 @@ internal class Compiler(
 
     private val headings: MutableList<HeadingRef> = mutableListOf()
 
+    /**
+     * How many levels [headingOf] should add to the [HEADING_SECTION] / [HEADING_TYPE] /
+     * [HEADING_FIELD_SECTION] / [HEADING_FIELD] base levels for the document currently being
+     * rendered.  `0` in [ProtocGenMarkdown.Options.OutputType.PER_FILE] (the doc's L1 is the
+     * file's own path heading, so the body sits at L2..L5); `1` in
+     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] /
+     * [ProtocGenMarkdown.Options.OutputType.PER_SESSION] (the doc's L1 is the package / session
+     * label, each input file is then an L2 sub-heading, and the body shifts down to L3..L6).
+     * Mutated at the start of [outlineDocument] for each output group; [fixedHeading] ignores
+     * it and is the way to emit headings that must sit at a known absolute level (the doc's L1
+     * and the per-file L2 in consolidated modes).
+     */
+    private var bodyLevelShift: Int = 0
+
+    /**
+     * A single output `.md` file the compiler will emit: a filename plus the (one or more) input
+     * proto files whose content lands in it, plus the H1 title text that heads it.  In
+     * [ProtocGenMarkdown.Options.OutputType.PER_FILE] the group always contains exactly one
+     * file and the title equals that file's relative path; in
+     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] the group's files all share the same
+     * proto package and the title is that package name (or `(no package)` for files with no
+     * `package` directive); in [ProtocGenMarkdown.Options.OutputType.PER_SESSION] there is a
+     * single group containing every file in the compile request and the title is the longest
+     * common package prefix across them (or `overview` when none exists).
+     */
+    private data class OutputGroup(
+        val filename: String,
+        val files: List<FileDescriptorProtoWrapper>,
+        val title: String,
+    )
+
+    /** True when [outlineDocument] should emit an L2 per-file heading inside the document. */
+    private val OutputGroup.consolidated: Boolean
+        get() = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE
+
     internal fun compile(): PluginProtos.CodeGeneratorResponse {
         val response = CodeGeneratorResponseWrapper()
-        for (file in scopeFiles) response.addFile(outlineFilename(file), render(outlineDocument(file)))
+        for (group in outputGroups) response.addFile(group.filename, render(outlineDocument(group)))
         return response.build()
     }
 
@@ -159,13 +200,104 @@ internal class Compiler(
         request.protoFiles.filter { it.name in toGenerate }
     }
 
+    /**
+     * Maps every file in the compile scope to the [OutputGroup] it will be rendered under.  In
+     * [ProtocGenMarkdown.Options.OutputType.PER_FILE] this is a one-to-one identity; in the
+     * consolidated modes multiple files share a group.  Used by [appendTypeReference] to decide
+     * whether a cross-type link can collapse to a bare `#anchor` (same group), the relative
+     * `.md` path to use otherwise, and the heading-path basis the target's anchor is computed
+     * from.
+     */
+    private val fileToGroup: Map<FileDescriptorProtoWrapper, OutputGroup> by lazy {
+        outputGroups.flatMap { g -> g.files.map { it to g } }.toMap()
+    }
+
+    /**
+     * The set of `.md` files this compile will produce, in the order [compile] emits them.
+     *
+     *  - [ProtocGenMarkdown.Options.OutputType.PER_FILE]: one group per scope file, filename
+     *    derived by swapping `.proto` for `.md` on the file's relative path.
+     *  - [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE]: one group per distinct
+     *    `package` declared across the scope files.  When every file declaring a given
+     *    non-empty package lives at the directory whose path is the package with `.` → `/`,
+     *    the group's filename is `<pkg-as-dir>/package.md` (the "namespaced" case).
+     *    Otherwise it is `<fully.qualified.package>.md` at the output root.  Files with no
+     *    `package` directive collapse to a single group at `default.md`.
+     *  - [ProtocGenMarkdown.Options.OutputType.PER_SESSION]: one group containing every
+     *    scope file, named `<longest-common-package-prefix>.md` at the output root, or
+     *    `overview.md` when no common prefix exists.
+     */
+    private val outputGroups: List<OutputGroup> by lazy {
+        when (options.outputType) {
+            ProtocGenMarkdown.Options.OutputType.PER_FILE ->
+                scopeFiles.map { f -> OutputGroup(perFileFilename(f), listOf(f), titleOf(f)) }
+
+            ProtocGenMarkdown.Options.OutputType.PER_PACKAGE -> {
+                val byPkg = LinkedHashMap<String, MutableList<FileDescriptorProtoWrapper>>()
+                for (f in scopeFiles) byPkg.getOrPut(f.`package`?.value.orEmpty()) { mutableListOf() } += f
+                byPkg.map { (pkg, pkgFiles) -> packageGroup(pkg, pkgFiles) }
+            }
+
+            ProtocGenMarkdown.Options.OutputType.PER_SESSION -> {
+                val files = scopeFiles
+                val lcp = longestCommonPackagePrefix(files.map { it.`package`?.value.orEmpty() })
+                val title = lcp.ifEmpty { "overview" }
+                listOf(OutputGroup("$title.md", sortedGroupFiles(files), title))
+            }
+        }
+    }
+
+    private fun perFileFilename(file: FileDescriptorProtoWrapper): String = (file.name ?: "").removeSuffix(".proto") + ".md"
+
+    /**
+     * Output-file shape for a single proto package's worth of files under
+     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE].  A non-empty package is treated as
+     * "namespaced" when every file declaring it lives at the directory whose path is the
+     * package with `.` → `/` (e.g. `foo/bar/whatever.proto` for `package foo.bar`); in that
+     * case the consolidated file is `<pkg-as-dir>/package.md`.  Otherwise the file is dropped
+     * at the output root as `<fully.qualified.package>.md`.  Files with no `package` directive
+     * collapse into a single `default.md` group titled `(no package)`.
+     */
+    private fun packageGroup(
+        pkg: String,
+        pkgFiles: List<FileDescriptorProtoWrapper>,
+    ): OutputGroup {
+        val sortedFiles = sortedGroupFiles(pkgFiles)
+        if (pkg.isEmpty()) return OutputGroup("default.md", sortedFiles, "(no package)")
+        val pkgAsDir = pkg.replace('.', '/')
+        val namespaced =
+            pkgFiles.all { f ->
+                val name = f.name ?: return@all false
+                name.substringBeforeLast('/', missingDelimiterValue = "") == pkgAsDir
+            }
+        val filename = if (namespaced) "$pkgAsDir/package.md" else "$pkg.md"
+        return OutputGroup(filename, sortedFiles, pkg)
+    }
+
+    /**
+     * Longest segment-wise common prefix of a list of dotted proto package names.  Splits each
+     * package on `.`, walks segment-by-segment, and joins the shared prefix back with `.`.
+     * Returns `""` when [pkgs] is empty, when any element is empty, or when the very first
+     * segments diverge — the caller maps the empty result to the `overview` fallback.
+     */
+    private fun longestCommonPackagePrefix(pkgs: List<String>): String {
+        if (pkgs.isEmpty()) return ""
+        val splits = pkgs.map { if (it.isEmpty()) emptyList() else it.split('.') }
+        val first = splits.first()
+        var shared = 0
+        while (shared < first.size && splits.all { it.size > shared && it[shared] == first[shared] }) shared++
+        return first.take(shared).joinToString(".")
+    }
+
     private enum class TypeKind { MESSAGE, ENUM }
 
     /**
      * What a TYPE_MESSAGE / TYPE_ENUM cross-reference resolves to: the file that declares the
-     * type, the kind (so we know whether to anchor under the `Messages` or `Enums` L2 section),
+     * type, the kind (so we know whether to anchor under the `Messages` or `Enums` section),
      * and the dotted ancestor-prefixed local name within that file (e.g. `Outer.Inner`) — the
-     * exact string used as the type's L3 heading text and therefore the basis of its anchor id.
+     * exact string used as the type's leaf heading text and therefore the basis of its anchor
+     * id.  The owning [OutputGroup] (looked up via [fileToGroup]) plus the [OutputGroup.title]
+     * provides the rest of the ancestor heading path used for stable anchors.
      */
     private data class TypeRef(
         val file: FileDescriptorProtoWrapper,
@@ -214,32 +346,83 @@ internal class Compiler(
         }
     }
 
-    private fun outlineFilename(file: FileDescriptorProtoWrapper): String = (file.name ?: "").removeSuffix(".proto") + ".md"
-
-    private fun outlineDocument(file: FileDescriptorProtoWrapper): Document {
+    private fun outlineDocument(group: OutputGroup): Document {
         headings.clear()
+        bodyLevelShift = if (group.consolidated) 1 else 0
         val doc = Document()
-        val sci = file.sourceCodeInfo
-        val currentMd = outlineFilename(file)
-        val title = titleOf(file)
-        val titlePath = listOf(title)
-        val pkg = file.`package`?.value.orEmpty()
-        val fqn: (String) -> String = { name -> if (pkg.isEmpty()) name else "$pkg.$name" }
+        val groupPath = listOf(group.title)
         doc.appendChild(frontmatterBlock())
-        doc.appendChild(headingOf(HEADING_TOP, title, titlePath))
-        appendInsertionPoint(doc, "file_header")
+        doc.appendChild(fixedHeading(1, group.title, groupPath))
+        if (group.consolidated) {
+            appendInsertionPoint(doc, "file_header")
+        }
 
-        val services = file.services
-        val messages = collectMessages(file)
-        val enums = collectEnums(file, messages)
-        val hasBody = services.isNotEmpty() || messages.isNotEmpty() || enums.isNotEmpty()
+        val files =
+            group.files.map { f ->
+                val messages = sortedNamedTypes(collectMessages(f))
+                val enums = sortedNamedTypes(collectEnums(f, messages))
+                FileBody(f, sortedServices(f.services), messages, enums)
+            }
+        val hasBody = files.any { it.hasBody }
         val thematicBreak: ThematicBreak? = if (hasBody) ThematicBreak().also { doc.appendChild(it) } else null
 
-        if (services.isNotEmpty()) {
-            val sectionPath = titlePath + "Services"
+        for (body in files) appendFileBody(doc, body, group, groupPath)
+
+        if (thematicBreak != null) renderTableOfContents(thematicBreak)
+
+        appendInsertionPoint(doc, "file_footer")
+
+        return doc
+    }
+
+    /**
+     * A scope file with its `Messages` and `Enums` walks materialized once so [appendFileBody]
+     * and the [outlineDocument] thematic-break check don't both have to walk the message tree.
+     * `hasBody` is the "the file declares at least one service/message/enum" predicate that
+     * gates the per-doc thematic break under the group's H1.
+     */
+    private class FileBody(
+        val file: FileDescriptorProtoWrapper,
+        val services: List<ServiceDescriptorProtoWrapper>,
+        val messages: List<Pair<String, DescriptorProtoWrapper>>,
+        val enums: List<Pair<String, EnumDescriptorProtoWrapper>>,
+    ) {
+        val hasBody: Boolean = services.isNotEmpty() || messages.isNotEmpty() || enums.isNotEmpty()
+    }
+
+    private fun appendFileBody(
+        doc: Document,
+        body: FileBody,
+        group: OutputGroup,
+        groupPath: List<String>,
+    ) {
+        val file = body.file
+        val sci = file.sourceCodeInfo
+        val currentMd = group.filename
+        val pkg = file.`package`?.value.orEmpty()
+        val fqn: (String) -> String = { name -> if (pkg.isEmpty()) name else "$pkg.$name" }
+
+        val fileTitle = titleOf(file)
+        val filePath: List<String> =
+            if (group.consolidated) {
+                appendSectionRule(doc, 2)
+                val fp = groupPath + fileTitle
+                doc.appendChild(fixedHeading(2, fileTitle, fp))
+                fp
+            } else {
+                groupPath
+            }
+        appendInsertionPoint(doc, "file_header_scope:$fileTitle")
+        appendInsertionPoint(doc, "file_scope:$fileTitle")
+
+        val sectionLevel = HEADING_SECTION + bodyLevelShift
+
+        if (body.services.isNotEmpty()) {
+            appendSectionRule(doc, sectionLevel)
+            val sectionPath = filePath + "Services"
             doc.appendChild(headingOf(HEADING_SECTION, "Services", sectionPath))
             appendInsertionPoint(doc, "services_section")
-            for (s in services) {
+            for (s in body.services) {
                 val sname = s.name?.value ?: "(unnamed)"
                 val svcPath = sectionPath + sname
                 doc.appendChild(headingOf(HEADING_TYPE, sname, svcPath))
@@ -250,11 +433,12 @@ internal class Compiler(
             }
         }
 
-        if (messages.isNotEmpty()) {
-            val sectionPath = titlePath + "Messages"
+        if (body.messages.isNotEmpty()) {
+            appendSectionRule(doc, sectionLevel)
+            val sectionPath = filePath + "Messages"
             doc.appendChild(headingOf(HEADING_SECTION, "Messages", sectionPath))
             appendInsertionPoint(doc, "messages_section")
-            for ((name, msg) in messages) {
+            for ((name, msg) in body.messages) {
                 val msgPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, msgPath))
                 appendInsertionPoint(doc, "message_header_scope:${fqn(name)}")
@@ -264,11 +448,12 @@ internal class Compiler(
             }
         }
 
-        if (enums.isNotEmpty()) {
-            val sectionPath = titlePath + "Enums"
+        if (body.enums.isNotEmpty()) {
+            appendSectionRule(doc, sectionLevel)
+            val sectionPath = filePath + "Enums"
             doc.appendChild(headingOf(HEADING_SECTION, "Enums", sectionPath))
             appendInsertionPoint(doc, "enums_section")
-            for ((name, enum) in enums) {
+            for ((name, enum) in body.enums) {
                 val enumPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, enumPath))
                 appendInsertionPoint(doc, "enum_header_scope:${fqn(name)}")
@@ -277,12 +462,39 @@ internal class Compiler(
                 appendValuesTable(doc, enum, sci, enumPath)
             }
         }
+    }
 
-        if (thematicBreak != null) renderTableOfContents(thematicBreak)
-
-        appendInsertionPoint(doc, "file_footer")
-
-        return doc
+    /**
+     * Append a `___` thematic break before a significant section heading that's about to be
+     * emitted at [aboutToEmitLevel] — the per-file L2 in the consolidated modes and the
+     * `Services`/`Messages`/`Enums` section heading at every output type.  Skipped in two
+     * cases so visually-adjacent rules don't pile up:
+     *
+     *  - The most recent significant child is already a [ThematicBreak] (the under-title rule,
+     *    which we treat as the document's first section break — the first significant section
+     *    gets no additional rule of its own).
+     *  - The most recent significant child is a [Heading] at a strictly shallower level than
+     *    [aboutToEmitLevel] (so e.g. the L3 `### Services` immediately following the per-file
+     *    L2 `## file.proto` in a consolidated doc doesn't introduce a rule that would visually
+     *    split a heading from its first sub-section).
+     *
+     * Trailing insertion-point HTML-comment blocks are transparent to this check so the
+     * `file_header_scope:<path>` / `file_scope:<path>` markers that immediately follow a file
+     * heading don't break either adjacency invariant.
+     */
+    private fun appendSectionRule(
+        doc: Document,
+        aboutToEmitLevel: Int,
+    ) {
+        var last: Node? = doc.lastChild
+        while (last is HtmlBlock && last.literal.startsWith("<!-- @@protoc_insertion_point(")) {
+            last = last.previous
+        }
+        when (last) {
+            is ThematicBreak -> return
+            is Heading -> if (last.level < aboutToEmitLevel) return
+        }
+        doc.appendChild(ThematicBreak())
     }
 
     /**
@@ -467,6 +679,12 @@ internal class Compiler(
             "generateInsertionPoints" to options.generateInsertionPoints.toString(),
             "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null"),
             "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null"),
+            "outputType" to options.outputType.name,
+            "typeSortMode" to options.typeSortMode.name,
+            "fileSortMode" to options.fileSortMode.name,
+            "rpcSortMode" to options.rpcSortMode.name,
+            "fieldSortMode" to options.fieldSortMode.name,
+            "enumValueSortMode" to options.enumValueSortMode.name,
         ).joinToString(",") { (k, v) -> "$k=$v" }
 
     /**
@@ -573,6 +791,54 @@ internal class Compiler(
     }
 
     /**
+     * Per-section sorters.  Each consults the matching [ProtocGenMarkdown.Options] sort-mode
+     * field and returns a new list ordered accordingly; [SortMode.ENCOUNTER] / the descriptor
+     * order returns the input list unchanged.  [sortedNamedTypes] takes the already-flattened
+     * `(full-dotted-name, descriptor)` pairs produced by [collectMessages] / [collectEnums],
+     * so `ALPHABETICAL` lands a parent immediately before its children
+     * (e.g. `Foo` < `Foo.Inner`).  [sortedFields] (consulting [ProtocGenMarkdown.Options.fieldSortMode])
+     * and [sortedEnumValues] (consulting [ProtocGenMarkdown.Options.enumValueSortMode])
+     * additionally honor [MemberSortMode.NUMBER] by the proto field number / enum value number.
+     */
+    private fun sortedServices(services: List<ServiceDescriptorProtoWrapper>): List<ServiceDescriptorProtoWrapper> =
+        when (options.typeSortMode) {
+            SortMode.ALPHABETICAL -> services.sortedBy { it.name?.value ?: "" }
+            SortMode.ENCOUNTER -> services
+        }
+
+    private fun <T> sortedNamedTypes(items: List<Pair<String, T>>): List<Pair<String, T>> =
+        when (options.typeSortMode) {
+            SortMode.ALPHABETICAL -> items.sortedBy { it.first }
+            SortMode.ENCOUNTER -> items
+        }
+
+    private fun sortedGroupFiles(files: List<FileDescriptorProtoWrapper>): List<FileDescriptorProtoWrapper> =
+        when (options.fileSortMode) {
+            SortMode.ALPHABETICAL -> files.sortedBy { it.name ?: "" }
+            SortMode.ENCOUNTER -> files
+        }
+
+    private fun sortedMethods(methods: List<MethodDescriptorProtoWrapper>): List<MethodDescriptorProtoWrapper> =
+        when (options.rpcSortMode) {
+            SortMode.ALPHABETICAL -> methods.sortedBy { it.name?.value ?: "" }
+            SortMode.ENCOUNTER -> methods
+        }
+
+    private fun sortedFields(fields: List<FieldDescriptorProtoWrapper>): List<FieldDescriptorProtoWrapper> =
+        when (options.fieldSortMode) {
+            MemberSortMode.ALPHABETICAL -> fields.sortedBy { it.name?.value ?: "" }
+            MemberSortMode.ENCOUNTER -> fields
+            MemberSortMode.NUMBER -> fields.sortedBy { it.number?.value ?: 0 }
+        }
+
+    private fun sortedEnumValues(values: List<EnumValueDescriptorProtoWrapper>): List<EnumValueDescriptorProtoWrapper> =
+        when (options.enumValueSortMode) {
+            MemberSortMode.ALPHABETICAL -> values.sortedBy { it.name?.value ?: "" }
+            MemberSortMode.ENCOUNTER -> values
+            MemberSortMode.NUMBER -> values.sortedBy { it.number?.value ?: 0 }
+        }
+
+    /**
      * Look up the leading proto comment for [locatable] and append its parsed CommonMark blocks
      * to [doc].  Treats the cleaned comment text as a CommonMark fragment, so lists, blockquotes,
      * fenced code, links, etc. round-trip through the AST and re-render correctly.
@@ -611,7 +877,7 @@ internal class Compiler(
         head.appendChild(headerRow("Name", "Type", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (field in msg.fields) {
+        for (field in sortedFields(msg.fields)) {
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(field.name?.value ?: "(unnamed)")) })
             row.appendChild(typeCell(field, currentMd))
@@ -664,13 +930,24 @@ internal class Compiler(
      * Append a leaf-name reference for a fully-qualified protobuf type [fqn] (e.g.
      * `.engine.protoc.markdown.example.hello.Greeting`) to [cell].  If the type's declaring file
      * is in the compile scope, emits a [Link] to that file's `.md` (relative to [currentMd])
-     * with a `#<anchor>` fragment targeting the type's L3 heading; otherwise plain text.
+     * with a `#<anchor>` fragment targeting the type's heading; otherwise plain text.
      * `null`/empty FQN renders as `?`.
      *
+     * When the target's [OutputGroup] is consolidated and shares its filename with [currentMd]
+     * — which always happens in [ProtocGenMarkdown.Options.OutputType.PER_SESSION] and happens
+     * for same-package references in [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] — the
+     * link collapses to a bare `#anchor` instead of `self.md#anchor`.  Same-file references in
+     * [ProtocGenMarkdown.Options.OutputType.PER_FILE] keep the existing `<file>.md#anchor`
+     * shape so the default-mode output stays byte-identical to releases before this option
+     * existed.
+     *
      * The anchor scheme honors [ProtocGenMarkdown.Options.generateStableAnchors]: when on, the
-     * path-based id from [pathAnchor] (`<file-slug>-<section>-<localName>`) so same-named types
-     * under different sections / files don't collide; when off, the GFM-slug of the local dotted
-     * name from [slugify], matching the renderer's heading-text auto-anchor.
+     * full ancestor heading path from [pathAnchor] (which includes the group's H1 title and, in
+     * consolidated modes, the per-file H2 title) so same-named types under different
+     * sections/files/groups don't collide.  When off, the GFM-slug of the leaf dotted name from
+     * [slugify], matching the renderer's heading-text auto-anchor — two same-named types in
+     * different files of one consolidated document share that anchor and resolve to whichever
+     * the renderer disambiguated first.
      */
     private fun appendTypeReference(
         cell: TableCell,
@@ -686,13 +963,26 @@ internal class Compiler(
         val target = typeIndex[cleaned]
         if (target != null) {
             val section = if (target.kind == TypeKind.MESSAGE) "Messages" else "Enums"
+            val targetGroup = fileToGroup[target.file]!!
+            val targetHeadingPath =
+                if (targetGroup.consolidated) {
+                    listOf(targetGroup.title, titleOf(target.file), section, target.localName)
+                } else {
+                    listOf(targetGroup.title, section, target.localName)
+                }
             val anchor =
                 if (options.generateStableAnchors) {
-                    pathAnchor(listOf(titleOf(target.file), section, target.localName))
+                    pathAnchor(targetHeadingPath)
                 } else {
                     slugify(target.localName)
                 }
-            val link = Link(relativeLink(currentMd, outlineFilename(target.file)) + "#" + anchor, null)
+            val href =
+                if (targetGroup.consolidated && targetGroup.filename == currentMd) {
+                    "#$anchor"
+                } else {
+                    relativeLink(currentMd, targetGroup.filename) + "#" + anchor
+                }
+            val link = Link(href, null)
             link.appendChild(Text(leaf))
             cell.appendChild(link)
         } else {
@@ -719,7 +1009,7 @@ internal class Compiler(
         head.appendChild(headerRow("Name", "Input", "Output", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (method in service.methods) {
+        for (method in sortedMethods(service.methods)) {
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(method.name?.value ?: "(unnamed)")) })
             row.appendChild(rpcTypeCell(method.inputType?.value, method.clientStreaming?.value == true, currentMd))
@@ -771,7 +1061,7 @@ internal class Compiler(
         head.appendChild(headerRow("Name", "Number", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (value in enum.values) {
+        for (value in sortedEnumValues(enum.values)) {
             val vname = value.name?.value ?: "(unnamed)"
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(vname)) })
@@ -906,8 +1196,12 @@ internal class Compiler(
     }
 
     /**
-     * Build a heading at [level] with the visible [text] and record a [HeadingRef] for the
-     * Table of Contents to consume later.  When
+     * Build a body heading whose absolute level is [baseLevel] plus the current
+     * [bodyLevelShift], with the visible [text], and record a [HeadingRef] for the Table of
+     * Contents to consume later.  [baseLevel] is the level the heading sits at in
+     * [ProtocGenMarkdown.Options.OutputType.PER_FILE] mode (so [HEADING_SECTION] = 2,
+     * [HEADING_TYPE] = 3, etc.); in the consolidated modes the shift adds one so the same call
+     * sites emit headings one level deeper to make room for the per-file L2 layer.  When
      * [ProtocGenMarkdown.Options.generateStableAnchors] is true the heading is prefixed by an
      * inline empty `<a>` carrying the path-based anchor id derived from [path] via [pathAnchor]
      * — what intra-document links target so that same-named headings under different parents
@@ -915,6 +1209,19 @@ internal class Compiler(
      * element is omitted; links rely on the renderer's heading-text auto-anchor (see [slugify]).
      */
     private fun headingOf(
+        baseLevel: Int,
+        text: String,
+        path: List<String>,
+    ): Heading = fixedHeading(baseLevel + bodyLevelShift, text, path)
+
+    /**
+     * Build a heading at an absolute [level] (no [bodyLevelShift] applied) with the visible
+     * [text] and record a [HeadingRef] for the Table of Contents to consume later.  Used for
+     * the doc's H1 (always level 1, regardless of mode) and the per-file H2 in the
+     * consolidated modes — both layers that sit outside the per-file body whose levels [headingOf]
+     * shifts.
+     */
+    private fun fixedHeading(
         level: Int,
         text: String,
         path: List<String>,
@@ -930,7 +1237,6 @@ internal class Compiler(
     private fun render(doc: Document): String = renderer.render(doc)
 
     private companion object {
-        const val HEADING_TOP = 1
         const val HEADING_SECTION = 2
         const val HEADING_TYPE = 3
         const val HEADING_FIELD_SECTION = 4

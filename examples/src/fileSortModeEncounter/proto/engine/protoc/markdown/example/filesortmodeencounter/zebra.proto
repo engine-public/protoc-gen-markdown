@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.filesortmodeencounter;
+
+option java_package = "com.engine.protoc.markdown.example.filesortmodeencounter";
+option java_multiple_files = true;
+
+// Sibling file in the same package as alpha.proto.  Bundled with outputType=PER_PACKAGE
+// so the per-file L2 ordering produced by fileSortMode is visible inside the
+// consolidated document.
+message ZebraEntry {
+    string text = 1;
+}

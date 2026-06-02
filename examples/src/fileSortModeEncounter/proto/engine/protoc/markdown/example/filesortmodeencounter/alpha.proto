@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.filesortmodeencounter;
+
+option java_package = "com.engine.protoc.markdown.example.filesortmodeencounter";
+option java_multiple_files = true;
+
+// Sibling file in the same package as zebra.proto.
+message AlphaEntry {
+    string text = 1;
+}
