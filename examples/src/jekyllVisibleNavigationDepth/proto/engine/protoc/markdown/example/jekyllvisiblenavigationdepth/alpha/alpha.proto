@@ -9,6 +9,8 @@ option java_multiple_files = true;
 //
 // With `visibleNavigationDepth=1` set, only the top-tier overview page stays visible; the package
 // and per-file pages receive `nav_exclude: true` so just-the-docs drops them from the sidebar.
+// Because the overview's children are hidden, it also gets `has_children: false` so just-the-docs
+// renders no expander for them.
 message Alpha {
     // The alpha's name.
     string name = 1;

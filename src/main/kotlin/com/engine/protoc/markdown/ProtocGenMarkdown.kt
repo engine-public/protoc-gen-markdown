@@ -98,8 +98,10 @@ public class ProtocGenMarkdown(
         public val generateInsertionPoints: Boolean,
         /**
          * Lower bound (inclusive) of the heading levels that appear in the Table of Contents.
-         * Heading levels are 1 (`#`) through 5 (`#####`); the file path is L1, the section names
-         * (`Services`/`Messages`/`Enums`) are L2, each service/message/enum name is L3, the
+         * Heading levels are 1 (`#`) through 5 (`#####`); the document's title (the file
+         * `<path>` in [OutputType.PER_FILE], the dotted `<pkg>` in [OutputType.PER_PACKAGE] and
+         * package indices, the `<prefix>` or `Overview` in [OutputType.SINGLE_FILE]) is L1, the section
+         * names (`Services`/`Messages`/`Enums`) are L2, each service/message/enum name is L3, the
          * `Field Summary` / `Field Details` / `RPC Summary` / `RPC Details` / `Value Summary` /
          * `Value Details` sub-section headers are L4, and the individual `##### <name>` headings
          * inside the `Details` sub-sections are L5.
@@ -133,27 +135,28 @@ public class ProtocGenMarkdown(
          * Selects how input files are mapped to output files.
          *
          *  - [OutputType.PER_FILE] (the default) — one `.md` per input proto, mirroring the input
-         *    directory layout.  The `# <path>` heading at L1 is the proto's full relative path;
-         *    every other heading sits one level deeper, exactly as documented under the headings
-         *    section above.
+         *    directory layout.  The L1 heading is `# <full relative path>`; every other
+         *    heading sits one level deeper, exactly as documented under the headings section
+         *    above.
          *  - [OutputType.PER_PACKAGE] — every input file declaring the same proto `package` is
-         *    consolidated into one `.md`.  The file's L1 heading is the full dotted package name;
-         *    each input file becomes an L2 heading carrying its full relative path; the existing
-         *    `## Services` / `## Messages` / `## Enums` section headers shift down to L3, type
-         *    names to L4, the `Field Summary` / `RPC Summary` / `Value Summary` sub-section
-         *    headers to L5, and the individual `##### <name>` headings to L6.  Output location
-         *    depends on whether the package is "namespaced": when every file declaring the
-         *    package lives at the directory whose path equals the package's dotted name with
-         *    `.` → `/` (e.g. all files declaring `foo.bar` live under `foo/bar/`), the
+         *    consolidated into one `.md`.  The file's L1 heading is `# <dotted
+         *    package>`; each input file becomes an L2 heading carrying its full relative path;
+         *    the existing `## Services` / `## Messages` / `## Enums` section headers shift down
+         *    to L3, type names to L4, the `Field Summary` / `RPC Summary` / `Value Summary`
+         *    sub-section headers to L5, and the individual `##### <name>` headings to L6.
+         *    Output location depends on whether the package is "namespaced": when every file
+         *    declaring the package lives at the directory whose path equals the package's dotted
+         *    name with `.` → `/` (e.g. all files declaring `foo.bar` live under `foo/bar/`), the
          *    consolidated file is dropped at `<pkg-as-dir>/package.md`.  Otherwise it is dropped
          *    at the output root with the name `<fully.qualified.package>.md`.  Files declaring
-         *    no `package` directive group under the title `(no package)` at `default.md`.
+         *    no `package` directive group under the title `# Default Package` at `default.md`.
          *  - [OutputType.SINGLE_FILE] — every input file in the compile request is consolidated
-         *    into a single `.md` at the output root.  The L1 heading is the longest common
-         *    package prefix shared across all files in the session (e.g. `foo.bar` for files
-         *    declaring `foo.bar.baz` and `foo.bar.qux`), or the literal `overview` when there is
-         *    no common prefix.  The filename is the same name plus `.md`.  Per-file L2
-         *    sub-sections and the level-shift rules from PER_PACKAGE apply identically.
+         *    into a single `.md` at the output root.  The L1 heading is `# <longest
+         *    common package prefix>` (e.g. `# foo.bar` for files declaring `foo.bar.baz`
+         *    and `foo.bar.qux`), or `# Overview` when there is no common prefix.  The
+         *    filename is `<longest-common-package-prefix>.md`, or `overview.md` when no common
+         *    prefix exists.  Per-file L2 sub-sections and the level-shift rules from PER_PACKAGE
+         *    apply identically.
          *
          * Cross-type references whose source and target end up in the same output file collapse
          * to a bare `#anchor` link; references that cross output-file boundaries keep their
@@ -409,18 +412,28 @@ public class ProtocGenMarkdown(
          * tightly checked while still pointing a known-external label at an external URL.
          *
          * Passed via repeated entries in the parameter string, each of the form
-         * `referenceLink=<label>=<URL>`; the `Parameters` parser splits on `=` with a limit of
-         * two, so the URL may contain additional `=` characters.  Entries with no `=` separator
-         * are rejected with an [IllegalArgumentException] from the parameter parser.  The map
-         * preserves entry order (parameter-string order) so the frontmatter snapshot
-         * round-trips it deterministically.
+         * `referenceLink=<label>=<URL>`; the `Parameters` parser splits on `=` with a limit
+         * of two, so the URL may contain additional `=` characters.  Entries with no `=`
+         * separator are rejected with an [IllegalArgumentException] from the parameter
+         * parser.  The map preserves entry order (parameter-string order) so the frontmatter
+         * snapshot round-trips it deterministically.
          *
          * URLs containing `:` cannot be passed inside `--markdown_out=…:<outdir>` because
-         * protoc splits options from the output directory on the first `:` — use
-         * `--markdown_opt=referenceLink=<label>=<URL>` for those (one `--markdown_opt` per
+         * protoc splits options from the output directory on the first `:`.  Two URL shapes
+         * sidestep the issue:
+         *
+         *  - Site-relative paths — `referenceLink=CoreEntity=/docs/core-entity`.  Resolves
+         *    relative to the host serving the rendered Markdown; ideal when the docs are
+         *    deployed alongside an existing site (`example.com/docs/core-entity`).
+         *  - Scheme-stripped absolute URLs — `referenceLink=CoreEntity=example.com/docs/core-entity`.
+         *    Useful when targeting a different host; the rendered link is protocol-relative,
+         *    so the browser will follow it with whatever scheme served the surrounding page.
+         *
+         * For values that genuinely need an explicit scheme (`https://...`), pass them through
+         * `--markdown_opt=referenceLink=<label>=<URL>` instead (one `--markdown_opt` per
          * entry).  The Gradle `protobuf` plugin's `option(...)` DSL currently routes through
-         * `--markdown_out=…`, so pass `:`-bearing URLs as `--markdown_opt=…` via a manual
-         * protoc invocation or use a URL form without `:` (e.g. a site-relative path).
+         * `--markdown_out=…`, so `:`-bearing URLs go via a manual protoc invocation with
+         * `--markdown_opt`, or use one of the two URL shapes above.
          *
          * Default: empty map — no overrides applied; every comment reference goes through the
          * normal resolver.

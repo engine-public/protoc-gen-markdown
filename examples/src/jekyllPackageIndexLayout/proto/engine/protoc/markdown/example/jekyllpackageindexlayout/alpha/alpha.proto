@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllpackageindexlayout.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllpackageindexlayout.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `packageIndexLayout=section` set, only the per-package index pages receive
+// `layout: "section"`; the overview and per-file pages omit the key.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

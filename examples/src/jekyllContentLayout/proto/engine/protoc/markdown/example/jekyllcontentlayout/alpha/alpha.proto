@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllcontentlayout.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllcontentlayout.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `contentLayout=api` set, only the per-file content pages receive `layout: "api"`; the
+// overview and per-package index pages omit the key.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}
