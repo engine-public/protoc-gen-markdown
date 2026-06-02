@@ -16,9 +16,5 @@ ___
   - [Messages](references.md#engine_protoc_markdown_example_referencelink_references_proto-Messages)
     
     - [Wrapper](references.md#engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper)
-      
-      - [name](references.md#engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-name)
-      
-      - [core](references.md#engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-core)
 
 <!-- @@protoc_insertion_point(file_footer) -->

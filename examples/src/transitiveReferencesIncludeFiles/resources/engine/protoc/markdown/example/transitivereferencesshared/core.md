@@ -45,14 +45,18 @@ so it surfaces in the request as a transitive dep that consumer.proto imports.
 
 |Name|Type|Description|
 |---|---|---|
-|name|string|A label assigned by the originating service.|
-|description|string|Free-form description.|
+|name|string|A label assigned by the originating service. [...](#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity-Field_Details-name)|
+|description|string|Free-form description. [...](#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity-Field_Details-description)|
 
 #### <a id="engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity-Field_Details-name"></a>name
 
+A label assigned by the originating service.
+
 ##### <a id="engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity-Field_Details-description"></a>description
+
+Free-form description.
 
 ___
 

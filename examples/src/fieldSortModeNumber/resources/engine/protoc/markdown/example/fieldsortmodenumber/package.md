@@ -16,11 +16,5 @@ ___
   - [Messages](widget.md#engine_protoc_markdown_example_fieldsortmodenumber_widget_proto-Messages)
     
     - [Widget](widget.md#engine_protoc_markdown_example_fieldsortmodenumber_widget_proto-Messages-Widget)
-      
-      - [beta](widget.md#engine_protoc_markdown_example_fieldsortmodenumber_widget_proto-Messages-Widget-Field_Details-beta)
-      
-      - [zeta](widget.md#engine_protoc_markdown_example_fieldsortmodenumber_widget_proto-Messages-Widget-Field_Details-zeta)
-      
-      - [alpha](widget.md#engine_protoc_markdown_example_fieldsortmodenumber_widget_proto-Messages-Widget-Field_Details-alpha)
 
 <!-- @@protoc_insertion_point(file_footer) -->

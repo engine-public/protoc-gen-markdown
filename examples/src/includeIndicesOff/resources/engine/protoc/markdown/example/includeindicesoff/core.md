@@ -48,11 +48,13 @@ Read and mutate user records.
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|GetUser|[GetUserRequest](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-GetUserRequest)|[User](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User)|Look up a user by id.|
+|GetUser|[GetUserRequest](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-GetUserRequest)|[User](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User)|Look up a user by id. [...](#engine_protoc_markdown_example_includeindicesoff_core_proto-Services-UserService-RPC_Details-GetUser)|
 
 #### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Services-UserService-RPC_Details"></a>RPC Details
 
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Services-UserService-RPC_Details-GetUser"></a>GetUser
+
+Look up a user by id.
 
 ___
 
@@ -88,17 +90,23 @@ A user of the system.
 
 |Name|Type|Description|
 |---|---|---|
-|id|string|Stable identifier.|
-|name|string|Display name.|
-|role|[UserRole](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Enums-UserRole)|The user's role in the system.|
+|id|string|Stable identifier. [...](#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-id)|
+|name|string|Display name. [...](#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-name)|
+|role|[UserRole](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Enums-UserRole)|The user's role in the system. [...](#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-role)|
 
 #### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-id"></a>id
 
+Stable identifier.
+
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-name"></a>name
 
+Display name.
+
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User-Field_Details-role"></a>role
+
+The user's role in the system.
 
 ___
 

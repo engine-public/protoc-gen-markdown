@@ -81,10 +81,12 @@ private val log = LoggerFactory.getLogger(Compiler::class.java)
  *    and output types link to the file declaring them whenever the type's file is in the
  *    compile scope; client- or server-streaming markers prefix the corresponding type cell
  *    with `stream `.  The description column carries only the first paragraph of each RPC's
- *    leading comment so the pipe-table syntax stays valid; when an RPC's comment has additional
- *    content, a trailing `[...](#<rpc-anchor>)` link points at a `##### <RpcName>` expansion
- *    grouped under a `#### RPC Details` heading emitted after the table.  `RPC Details` is
- *    omitted when no RPC needs an expansion.
+ *    leading comment so the pipe-table syntax stays valid; whenever the RPC has a leading
+ *    comment the cell ends with a trailing `[...](#<rpc-anchor>)` link pointing at a
+ *    `##### <RpcName>` expansion under the `#### RPC Details` heading emitted after the table.
+ *    The expansion always re-renders the full leading comment — redundancy with the table's
+ *    first-paragraph extract included — so the Details section is the canonical home of the
+ *    member's full doc.  RPCs with no leading comment contribute only a heading.
  *  - A `## Messages` section listing each message as `### <Dotted.Name>`.  Under each heading:
  *    the message's leading proto comment (parsed as CommonMark so links/lists/etc. round-trip),
  *    a `#### Field Summary` heading, then a GFM pipe table of the message's fields with
@@ -92,17 +94,20 @@ private val log = LoggerFactory.getLogger(Compiler::class.java)
  *    type (relative path) whenever the type's file is in the compile scope; out-of-scope and
  *    scalar types appear as plain text.  Repeated fields are prefixed with `repeated ` in the
  *    type cell.  The description cell carries only the first paragraph of the field's leading
- *    comment so the pipe-table syntax stays valid; if the comment has additional content
- *    beyond that first paragraph, a trailing `[...](#<field-anchor>)` link points at a
- *    `##### <fieldName>` expansion grouped under a `#### Field Details` heading emitted after
- *    the table.  `Field Details` is omitted when no field needs an expansion.
+ *    comment so the pipe-table syntax stays valid; whenever the field has a leading comment
+ *    the cell ends with a trailing `[...](#<field-anchor>)` link pointing at a
+ *    `##### <fieldName>` expansion under the `#### Field Details` heading emitted after the
+ *    table.  The expansion always re-renders the full leading comment — redundancy with the
+ *    table's first-paragraph extract included.  Fields with no leading comment contribute
+ *    only a heading.
  *  - A `## Enums` section listing each enum as `### <Dotted.Name>`.  Under each heading:
  *    the enum's leading proto comment, then a `#### Value Summary` heading and a GFM pipe
  *    table of the enum's values with columns `Name | Number | Description`.  The description
- *    column carries only the first paragraph of each value's leading comment; when a value's
- *    comment has additional content, a trailing `[...](#<value-anchor>)` link points at a
- *    `##### <ValueName>` expansion grouped under a `#### Value Details` heading emitted after
- *    the table.  `Value Details` is omitted when no value needs an expansion.
+ *    column carries only the first paragraph of each value's leading comment; whenever the
+ *    value has a leading comment the cell ends with a trailing `[...](#<value-anchor>)` link
+ *    pointing at a `##### <ValueName>` expansion under the `#### Value Details` heading
+ *    emitted after the table.  The expansion always re-renders the full leading comment.
+ *    Enum values with no leading comment contribute only a heading.
  *
  * Sections are omitted when their kind has no entries.  Map-entry synthetic messages are
  * skipped everywhere (Messages section, enum collection, type index).
@@ -183,8 +188,9 @@ internal class Compiler(
      * rendered.  `0` in [ProtocGenMarkdown.Options.OutputType.PER_FILE] (the doc's L1 is the
      * file's own path heading, so the body sits at L2..L5); `1` in
      * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] /
-     * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (the doc's L1 is the package / session
-     * label, each input file is then an L2 sub-heading, and the body shifts down to L3..L6).
+     * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (the doc's L1 is the package /
+     * single-file-overview label, each input file is then an L2 sub-heading, and the body
+     * shifts down to L3..L6).
      * Mutated at the start of [outlineDocument] for each output group; [fixedHeading] ignores
      * it and is the way to emit headings that must sit at a known absolute level (the doc's L1
      * and the per-file L2 in consolidated modes).
@@ -799,11 +805,10 @@ internal class Compiler(
     /**
      * Build the `<li>` for one input proto under a package index: a paragraph linking to the
      * file's per-file `.md` H1 anchor, followed by a nested bullet list with one item per
-     * non-empty section (Services / Messages / Enums), each containing per-type bullets that
-     * in turn carry per-member bullets.  Member entry paths mirror the per-file
-     * [appendRpcTable] / [appendFieldsTable] / [appendValuesTable] heading paths so the
-     * cross-file href lands on the same `##### <name>` heading the in-file
-     * `[...](#…)` expansion lands on.
+     * non-empty section (Services / Messages / Enums), each containing per-type bullets.
+     * Members (RPCs under services, fields under messages, values under enums) are
+     * intentionally omitted — the index is a navigation aid to the type, not a re-exposure of
+     * the per-file Field Summary / RPC Summary / Value Summary tables.
      */
     private fun packageIndexFileItem(
         body: FileBody,
@@ -822,17 +827,7 @@ internal class Compiler(
             for (s in body.services) {
                 val sname = s.name?.value ?: "(unnamed)"
                 val svcPath = sectionPath + sname
-                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(sname, file, svcPath, currentMd)) }
-                if (s.methods.isNotEmpty()) {
-                    val members = BulletList()
-                    val detailsPath = svcPath + "RPC Details"
-                    for (m in sortedMethods(s.methods)) {
-                        val mname = m.name?.value ?: "(unnamed)"
-                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(mname, file, detailsPath + mname, currentMd)) })
-                    }
-                    typeItem.appendChild(members)
-                }
-                typesList.appendChild(typeItem)
+                typesList.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(sname, file, svcPath, currentMd)) })
             }
             sectionItem.appendChild(typesList)
             inner.appendChild(sectionItem)
@@ -841,19 +836,9 @@ internal class Compiler(
             val sectionPath = filePath + "Messages"
             val sectionItem = ListItem().apply { appendChild(crossFileLinkParagraph("Messages", file, sectionPath, currentMd)) }
             val typesList = BulletList()
-            for ((name, msg) in body.messages) {
+            for ((name, _) in body.messages) {
                 val msgPath = sectionPath + name
-                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(name, file, msgPath, currentMd)) }
-                if (msg.fields.isNotEmpty()) {
-                    val members = BulletList()
-                    val detailsPath = msgPath + "Field Details"
-                    for (f in sortedFields(msg.fields)) {
-                        val fname = f.name?.value ?: "(unnamed)"
-                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(fname, file, detailsPath + fname, currentMd)) })
-                    }
-                    typeItem.appendChild(members)
-                }
-                typesList.appendChild(typeItem)
+                typesList.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(name, file, msgPath, currentMd)) })
             }
             sectionItem.appendChild(typesList)
             inner.appendChild(sectionItem)
@@ -862,19 +847,9 @@ internal class Compiler(
             val sectionPath = filePath + "Enums"
             val sectionItem = ListItem().apply { appendChild(crossFileLinkParagraph("Enums", file, sectionPath, currentMd)) }
             val typesList = BulletList()
-            for ((name, enum) in body.enums) {
+            for ((name, _) in body.enums) {
                 val enumPath = sectionPath + name
-                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(name, file, enumPath, currentMd)) }
-                if (enum.values.isNotEmpty()) {
-                    val members = BulletList()
-                    val detailsPath = enumPath + "Value Details"
-                    for (v in sortedEnumValues(enum.values)) {
-                        val vname = v.name?.value ?: "(unnamed)"
-                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(vname, file, detailsPath + vname, currentMd)) })
-                    }
-                    typeItem.appendChild(members)
-                }
-                typesList.appendChild(typeItem)
+                typesList.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(name, file, enumPath, currentMd)) })
             }
             sectionItem.appendChild(typesList)
             inner.appendChild(sectionItem)
@@ -886,8 +861,8 @@ internal class Compiler(
     /**
      * Wrap [hrefFor] in a one-link [Paragraph] for use as a [ListItem] body in
      * [packageIndexFileItem].  Centralizes the cross-file link composition so every bullet in
-     * the index — file, section, type, and member — goes through the same path/anchor pipeline
-     * as summary-table type cells and resolved comment references.
+     * the index — file, section, and type — goes through the same path/anchor pipeline as
+     * summary-table type cells and resolved comment references.
      */
     private fun crossFileLinkParagraph(
         text: String,
@@ -1414,30 +1389,28 @@ internal class Compiler(
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Summary", msgPath + "Field Summary"))
 
         val detailsPath = msgPath + "Field Details"
-        val perField = mutableListOf<Pair<FieldDescriptorProtoWrapper, Boolean>>()
+        val orderedFields = sortedFields(msg.fields)
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Type", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (field in sortedFields(msg.fields)) {
+        for (field in orderedFields) {
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(field.name?.value ?: "(unnamed)")) })
             row.appendChild(typeCell(field, currentMd))
             val fname = field.name?.value ?: "(unnamed)"
-            val (cell, needsExpansion) = descriptionCell(field, sci, "$msgFqn.$fname", detailsPath)
-            row.appendChild(cell)
-            perField += field to needsExpansion
+            row.appendChild(descriptionCell(field, sci, "$msgFqn.$fname", detailsPath))
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Details", detailsPath))
-        for ((field, expand) in perField) {
+        for (field in orderedFields) {
             val fname = field.name?.value ?: "(unnamed)"
             doc.appendChild(headingOf(HEADING_FIELD, fname, detailsPath + fname))
-            if (expand) appendLeadingComment(doc, sci, field, scopeFqn = "$msgFqn.$fname")
+            appendLeadingComment(doc, sci, field, scopeFqn = "$msgFqn.$fname")
         }
     }
 
@@ -1588,31 +1561,29 @@ internal class Compiler(
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Summary", svcPath + "RPC Summary"))
 
         val detailsPath = svcPath + "RPC Details"
-        val perMethod = mutableListOf<Pair<MethodDescriptorProtoWrapper, Boolean>>()
+        val orderedMethods = sortedMethods(service.methods)
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Input", "Output", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (method in sortedMethods(service.methods)) {
+        for (method in orderedMethods) {
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(method.name?.value ?: "(unnamed)")) })
             row.appendChild(rpcTypeCell(method.inputType?.value, method.clientStreaming?.value == true, currentMd))
             row.appendChild(rpcTypeCell(method.outputType?.value, method.serverStreaming?.value == true, currentMd))
             val mname = method.name?.value ?: "(unnamed)"
-            val (cell, needsExpansion) = summaryDescriptionCell(sci, method, "$serviceFqn.$mname", mname, detailsPath)
-            row.appendChild(cell)
-            perMethod += method to needsExpansion
+            row.appendChild(summaryDescriptionCell(sci, method, "$serviceFqn.$mname", mname, detailsPath))
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Details", detailsPath))
-        for ((method, expand) in perMethod) {
+        for (method in orderedMethods) {
             val mname = method.name?.value ?: "(unnamed)"
             doc.appendChild(headingOf(HEADING_FIELD, mname, detailsPath + mname))
-            if (expand) appendLeadingComment(doc, sci, method, scopeFqn = "$serviceFqn.$mname")
+            appendLeadingComment(doc, sci, method, scopeFqn = "$serviceFqn.$mname")
         }
     }
 
@@ -1640,30 +1611,28 @@ internal class Compiler(
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Summary", enumPath + "Value Summary"))
 
         val detailsPath = enumPath + "Value Details"
-        val perValue = mutableListOf<Pair<EnumValueDescriptorProtoWrapper, Boolean>>()
+        val orderedValues = sortedEnumValues(enum.values)
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Number", "Description"))
         table.appendChild(head)
         val body = TableBody()
-        for (value in sortedEnumValues(enum.values)) {
+        for (value in orderedValues) {
             val vname = value.name?.value ?: "(unnamed)"
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(vname)) })
             row.appendChild(TableCell().apply { appendChild(Text(value.number?.value?.toString() ?: "?")) })
-            val (cell, needsExpansion) = summaryDescriptionCell(sci, value, "$enumFqn.$vname", vname, detailsPath)
-            row.appendChild(cell)
-            perValue += value to needsExpansion
+            row.appendChild(summaryDescriptionCell(sci, value, "$enumFqn.$vname", vname, detailsPath))
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Details", detailsPath))
-        for ((value, expand) in perValue) {
+        for (value in orderedValues) {
             val vname = value.name?.value ?: "(unnamed)"
             doc.appendChild(headingOf(HEADING_FIELD, vname, detailsPath + vname))
-            if (expand) appendLeadingComment(doc, sci, value, scopeFqn = "$enumFqn.$vname")
+            appendLeadingComment(doc, sci, value, scopeFqn = "$enumFqn.$vname")
         }
     }
 
@@ -1671,10 +1640,11 @@ internal class Compiler(
      * Build the field's description cell from its leading proto comment.
      *
      * The cell carries only the first paragraph's inline content so the GFM pipe-table syntax
-     * stays valid (one row per line).  If the parsed comment has any block beyond that first
-     * paragraph — additional paragraphs, lists, blockquotes, code, etc. — the cell also gets
-     * a trailing `[...](#<field-anchor>)` link and the function returns `true` so the caller
-     * can emit a `#### <fieldName>` expansion with the full comment underneath after the table.
+     * stays valid (one row per line), followed by a trailing `[...](#<field-anchor>)` link into
+     * the field's `##### <fieldName>` expansion under `#### Field Details`.  The link is emitted
+     * whenever the field has any leading comment — even when the comment is single-paragraph and
+     * the Summary cell already shows the same content — so the Details section is the canonical
+     * place the full comment lives.
      *
      * The anchor is the explicit path id of the field's `##### <fieldName>` expansion (parent
      * message path + `Field Details` + field name, sanitized via [pathAnchor]).  Soft line
@@ -1686,14 +1656,15 @@ internal class Compiler(
         sci: SourceCodeInfoWrapper?,
         scopeFqn: String,
         detailsPath: List<String>,
-    ): Pair<TableCell, Boolean> = summaryDescriptionCell(sci, field, scopeFqn, field.name?.value ?: "(unnamed)", detailsPath)
+    ): TableCell = summaryDescriptionCell(sci, field, scopeFqn, field.name?.value ?: "(unnamed)", detailsPath)
 
     /**
-     * Shared first-paragraph-only description cell for summary tables (Field Summary, RPC Summary).
-     * Parses [locatable]'s cleaned leading proto comment, lifts the first paragraph's inline
-     * children into a [TableCell], and — if there's any content beyond that first paragraph —
+     * Shared first-paragraph-only description cell for summary tables (Field Summary, RPC
+     * Summary, Value Summary).  Parses [locatable]'s cleaned leading proto comment, lifts the
+     * first paragraph's inline children into a [TableCell], and — whenever any comment exists —
      * appends a `[...](#…)` link pointing at the matching `##### <elementName>` expansion under
-     * the corresponding Details section and returns `true` so the caller can emit it.
+     * the corresponding Details section.  Empty cells are returned unchanged when the locatable
+     * has no leading comment at all.
      *
      * Soft line breaks collapse to spaces and hard line breaks to `<br>` (via [replaceLineBreaks])
      * so no literal newline ever lands inside a pipe-table cell.
@@ -1704,27 +1675,24 @@ internal class Compiler(
         scopeFqn: String,
         elementName: String,
         detailsPath: List<String>,
-    ): Pair<TableCell, Boolean> {
+    ): TableCell {
         val cell = TableCell()
         val raw = sci?.findLocation(locatable)?.leadingComments?.cleaned
-        if (raw.isNullOrBlank()) return cell to false
+        if (raw.isNullOrBlank()) return cell
         val parsed = parseUnderScope(raw, scopeFqn)
-        val firstBlock = parsed.firstChild ?: return cell to false
-        val needsExpansion = firstBlock !is Paragraph || firstBlock.next != null
+        val firstBlock = parsed.firstChild ?: return cell
         if (firstBlock is Paragraph) {
             while (true) {
                 val inline = firstBlock.firstChild ?: break
                 cell.appendChild(inline)
             }
         }
-        if (needsExpansion) {
-            if (cell.firstChild != null) cell.appendChild(Text(" "))
-            val anchor = "#" + anchorFor(detailsPath + elementName)
-            val link = Link(anchor, null).apply { appendChild(Text("...")) }
-            cell.appendChild(link)
-        }
+        if (cell.firstChild != null) cell.appendChild(Text(" "))
+        val anchor = "#" + anchorFor(detailsPath + elementName)
+        val link = Link(anchor, null).apply { appendChild(Text("...")) }
+        cell.appendChild(link)
         replaceLineBreaks(cell)
-        return cell to needsExpansion
+        return cell
     }
 
     /**

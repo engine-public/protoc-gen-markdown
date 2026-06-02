@@ -16,11 +16,7 @@ ___
   - [Messages](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages)
     
     - [ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType)
-      
-      - [label](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType-Field_Details-label)
     
     - [Wrapper](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-Wrapper)
-      
-      - [inner](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-Wrapper-Field_Details-inner)
 
 <!-- @@protoc_insertion_point(file_footer) -->

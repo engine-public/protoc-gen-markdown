@@ -48,11 +48,13 @@ A service to say hello
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|SayHello|[GreetingRequest](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest)|[GreetingResponse](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse)|Say hello to my little friend|
+|SayHello|[GreetingRequest](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest)|[GreetingResponse](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse)|Say hello to my little friend [...](#engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details-SayHello)|
 
 #### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details"></a>RPC Details
 
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details-SayHello"></a>SayHello
+
+Say hello to my little friend
 
 ___
 
@@ -78,7 +80,7 @@ Runs the compiler at its defaults so the generated fixtures act as a baseline fo
 |Name|Type|Description|
 |---|---|---|
 |name|string|A comment block for the text field. [...](#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-name)|
-|type|[GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType)|Specify the character of the greeting you will receive.|
+|type|[GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType)|Specify the character of the greeting you will receive. [...](#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-type)|
 
 #### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details"></a>Field Details
 
@@ -98,6 +100,8 @@ It includes two paragraphs.
  * list
 
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-type"></a>type
+
+Specify the character of the greeting you will receive.
 
 ### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse"></a>GreetingResponse
 
@@ -133,16 +137,22 @@ Specifies how the customer will be greeted in the [GreetingResponse](hello.md#en
 
 |Name|Number|Description|
 |---|---|---|
-|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected from the available [GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType) values.|
-|GREETING\_TYPE\_INFORMAL|1|A greeting appropriate for formal settings.|
-|GREETING\_TYPE\_FORMAT|2|A greeting suited for an old friend.|
+|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected from the available [GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType) values. [...](#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_UNSPECIFIED)|
+|GREETING\_TYPE\_INFORMAL|1|A greeting appropriate for formal settings. [...](#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_INFORMAL)|
+|GREETING\_TYPE\_FORMAT|2|A greeting suited for an old friend. [...](#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_FORMAT)|
 
 #### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details"></a>Value Details
 
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_UNSPECIFIED"></a>GREETING\_TYPE\_UNSPECIFIED
 
+The greeting will be randomly selected from the available [GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType) values.
+
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_INFORMAL"></a>GREETING\_TYPE\_INFORMAL
 
+A greeting appropriate for formal settings.
+
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_FORMAT"></a>GREETING\_TYPE\_FORMAT
+
+A greeting suited for an old friend.
 
 <!-- @@protoc_insertion_point(file_footer) -->

@@ -41,11 +41,13 @@ Greeter is a tiny RPC so the Services section and a service\_scope pair are emit
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|SayHello|[GreetingRequest](generate_insertion_points.md#engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Messages-GreetingRequest)|[GreetingResponse](generate_insertion_points.md#engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Messages-GreetingResponse)|SayHello is a single unary RPC.|
+|SayHello|[GreetingRequest](generate_insertion_points.md#engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Messages-GreetingRequest)|[GreetingResponse](generate_insertion_points.md#engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Messages-GreetingResponse)|SayHello is a single unary RPC. [...](#engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Services-Greeter-RPC_Details-SayHello)|
 
 #### <a id="engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Services-Greeter-RPC_Details"></a>RPC Details
 
 ##### <a id="engine_protoc_markdown_example_generateinsertionpointsoff_generate_insertion_points_proto-Services-Greeter-RPC_Details-SayHello"></a>SayHello
+
+SayHello is a single unary RPC.
 
 ___
 

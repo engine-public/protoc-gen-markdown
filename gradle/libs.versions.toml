@@ -4,7 +4,7 @@ protobuf = "4.34.1"
 kotest = "6.1.4"
 engine-protoc-utils = "0.0.0-pre.0"
 graalvm-sdk = "23.1.2"
-commonmark = "0.26.0"
+commonmark = "0.28.0"
 log4j = "2.26.0"
 slf4j = "2.0.17"
 

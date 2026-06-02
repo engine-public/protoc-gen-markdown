@@ -16,21 +16,13 @@ ___
   - [Services](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Services)
     
     - [Echo](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Services-Echo)
-      
-      - [Send](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Services-Echo-RPC_Details-Send)
   
   - [Messages](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Messages)
     
     - [Payload](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Messages-Payload)
-      
-      - [body](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Messages-Payload-Field_Details-body)
   
   - [Enums](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Enums)
     
     - [Status](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Enums-Status)
-      
-      - [STATUS\_UNSPECIFIED](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Enums-Status-Value_Details-STATUS_UNSPECIFIED)
-      
-      - [STATUS\_OK](table_of_contents_headers.md#engine_protoc_markdown_example_tableofcontentsheaderswide_table_of_contents_headers_proto-Enums-Status-Value_Details-STATUS_OK)
 
 <!-- @@protoc_insertion_point(file_footer) -->

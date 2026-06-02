@@ -41,13 +41,17 @@ every link resolves to actual content this run wrote.
 
 |Name|Type|Description|
 |---|---|---|
-|entity|[CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity)|The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity).|
-|status|[CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus)|Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus).|
+|entity|[CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity)|The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity). [...](#engine_protoc_markdown_example_transitivereferencesincludefiles_consumer_proto-Messages-Consumer-Field_Details-entity)|
+|status|[CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus)|Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus). [...](#engine_protoc_markdown_example_transitivereferencesincludefiles_consumer_proto-Messages-Consumer-Field_Details-status)|
 
 #### <a id="engine_protoc_markdown_example_transitivereferencesincludefiles_consumer_proto-Messages-Consumer-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_transitivereferencesincludefiles_consumer_proto-Messages-Consumer-Field_Details-entity"></a>entity
 
+The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity).
+
 ##### <a id="engine_protoc_markdown_example_transitivereferencesincludefiles_consumer_proto-Messages-Consumer-Field_Details-status"></a>status
+
+Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus).
 
 <!-- @@protoc_insertion_point(file_footer) -->

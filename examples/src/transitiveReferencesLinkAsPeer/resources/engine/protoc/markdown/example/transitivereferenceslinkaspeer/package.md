@@ -16,9 +16,5 @@ ___
   - [Messages](consumer.md#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages)
     
     - [Consumer](consumer.md#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer)
-      
-      - [entity](consumer.md#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-entity)
-      
-      - [status](consumer.md#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-status)
 
 <!-- @@protoc_insertion_point(file_footer) -->

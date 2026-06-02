@@ -94,14 +94,21 @@ Exercises three reference-link syntax forms the resolver supports beyond the can
 
 |Name|Type|Description|
 |---|---|---|
-|responsive|[Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive)|The shape this holder wraps.  Resolves to the [Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive) declared at the top of this file (the field's declared type), even though there is also a nested `Holder.Responsive` sharing the same short name.|
-|tags|repeated string|Tags categorizing the held content. Example: \["a", "b"\]|
+|responsive|[Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive)|The shape this holder wraps.  Resolves to the [Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive) declared at the top of this file (the field's declared type), even though there is also a nested `Holder.Responsive` sharing the same short name. [...](#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-responsive)|
+|tags|repeated string|Tags categorizing the held content. Example: \["a", "b"\] [...](#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-tags)|
 
 #### <a id="engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-responsive"></a>responsive
 
+The shape this holder wraps.  Resolves to the [Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive) declared at the top of
+this file (the field's declared type), even though there is also a nested
+`Holder.Responsive` sharing the same short name.
+
 ##### <a id="engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-tags"></a>tags
+
+Tags categorizing the held content.
+Example: \["a", "b"\]
 
 ### <a id="engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder_Responsive"></a>Holder.Responsive
 

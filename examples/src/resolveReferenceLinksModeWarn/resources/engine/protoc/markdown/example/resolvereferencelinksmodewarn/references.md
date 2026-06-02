@@ -62,10 +62,12 @@ See [ReferencedType](references.md#engine_protoc_markdown_example_resolvereferen
 
 |Name|Type|Description|
 |---|---|---|
-|inner|[ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType)|The wrapped [ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType) instance.|
+|inner|[ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType)|The wrapped [ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType) instance. [...](#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-Wrapper-Field_Details-inner)|
 
 #### <a id="engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-Wrapper-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-Wrapper-Field_Details-inner"></a>inner
+
+The wrapped [ReferencedType](references.md#engine_protoc_markdown_example_resolvereferencelinksmodewarn_references_proto-Messages-ReferencedType) instance.
 
 <!-- @@protoc_insertion_point(file_footer) -->
