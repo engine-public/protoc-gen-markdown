@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.hello;
+
+option java_package = "com.engine.protoc.markdown.example.hello";
+option java_multiple_files = true;
+
+// Minimal proto: one message and one service.
+//
+// Runs the compiler at its defaults so the generated fixtures act as a baseline for the per-option suites alongside this one.
+// * a bulleted list
+// * with at least two items
+message GreetingRequest {
+    // A comment block for the text field.
+    //
+    // It includes two paragraphs.
+    // >it also has a quote
+    //
+    // [a link](https://example.com)
+    //
+    // * and
+    // * a
+    // * bulleted
+    // * list
+    string name = 1;
+
+    // Specify the character of the greeting you will receive.
+    GreetingType type = 2;
+}
+
+// Specifies how the customer will be greeted.
+enum GreetingType {
+    // The greeting will be randomly selected.
+    GREETING_TYPE_UNSPECIFIED = 0;
+    // A greeting appropriate for formal settings.
+    GREETING_TYPE_INFORMAL = 1;
+    // A greeting suited for an old friend.
+    GREETING_TYPE_FORMAT = 2;
+}
+
+message GreetingResponse {
+    string greeting = 1;
+}
+
+// A service to say hello
+service GreeterService {
+    // Say hello to my little friend
+    rpc SayHello(GreetingRequest) returns (GreetingResponse);
+}
+

@@ -18,7 +18,8 @@ plugins {
 val suiteRecorderOptions =
     mapOf(
         "hello" to emptyList<String>(),
-        "documentTypes" to listOf("documentTypes=COMPLETE"),
+        "generateStableAnchors" to listOf("generateStableAnchors=true"),
+        "tableOfContentsHeaders" to listOf("minTableOfContentsHeader=2", "maxTableOfContentsHeader=3"),
     )
 
 dependencies {
