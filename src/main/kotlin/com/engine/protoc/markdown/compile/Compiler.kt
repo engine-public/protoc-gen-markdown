@@ -40,6 +40,8 @@ import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 import org.commonmark.node.ThematicBreak
 import org.commonmark.parser.Parser
+import org.commonmark.parser.beta.LinkProcessor
+import org.commonmark.parser.beta.LinkResult
 import org.commonmark.renderer.NodeRenderer
 import org.commonmark.renderer.markdown.MarkdownNodeRendererContext
 import org.commonmark.renderer.markdown.MarkdownNodeRendererFactory
@@ -140,7 +142,26 @@ internal class Compiler(
                 },
             )
             .build()
-    private val parser: Parser = Parser.builder().extensions(listOf(tablesExtension)).build()
+
+    /**
+     * Fixed [LinkProcessor] installed on the shared [parser] that delegates each parsed link
+     * to whichever [ReferenceLinkResolver] owns the current document.  Constructed once per
+     * compiler so the parser itself can stay a single instance even as [currentResolver] is
+     * rebuilt per output document; per-comment scope flows through `setCurrentScope` /
+     * `clearCurrentScope` on the active resolver, set by [appendLeadingComment] and
+     * [summaryDescriptionCell] around each parse call.  When no resolver is active (NONE
+     * mode), the processor returns [LinkResult.none] so the core CommonMark processor
+     * handles links exactly as if no override were installed.
+     */
+    private val linkProcessor: LinkProcessor =
+        LinkProcessor { linkInfo, scanner, ctx ->
+            currentResolver?.linkProcessor?.process(linkInfo, scanner, ctx) ?: LinkResult.none()
+        }
+    private val parser: Parser =
+        Parser.builder()
+            .extensions(listOf(tablesExtension))
+            .linkProcessor(linkProcessor)
+            .build()
 
     /**
      * Every heading the compiler emits is recorded here in document order, populated as a side
@@ -287,7 +308,15 @@ internal class Compiler(
                     for (file in frontier) {
                         for (fqn in referencedTypeFqns(file)) {
                             val ref = byFqn[fqn] ?: continue
-                            if (ref.file !in included) next += ref.file
+                            if (ref.file !in included && ref.file !in next) {
+                                log.trace(
+                                    "transitive file {} promoted into scope; triggered by reference to {} in {}",
+                                    ref.file.name ?: "(unnamed)",
+                                    fqn,
+                                    file.name ?: "(unnamed)",
+                                )
+                                next += ref.file
+                            }
                         }
                     }
                     included += next
@@ -336,7 +365,15 @@ internal class Compiler(
         for (file in scopeFiles) {
             for (fqn in referencedTypeFqns(file)) {
                 val ref = byFqn[fqn] ?: continue
-                if (ref.file !in inScopeSet) peers += ref.file
+                if (ref.file !in inScopeSet && ref.file !in peers) {
+                    log.info(
+                        "transitive file {} added as peer; triggered by reference to {} in {}",
+                        ref.file.name ?: "(unnamed)",
+                        fqn,
+                        file.name ?: "(unnamed)",
+                    )
+                    peers += ref.file
+                }
             }
         }
         peers.associateWith { f ->
@@ -349,8 +386,12 @@ internal class Compiler(
             for (m in file.messageTypes) yieldAll(referencedTypeFqnsIn(m))
             for (s in file.services) {
                 for (method in s.methods) {
-                    method.inputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }?.let { yield(it) }
-                    method.outputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }?.let { yield(it) }
+                    method.inputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }
+                        ?.takeUnless { it in options.referenceLink }
+                        ?.let { yield(it) }
+                    method.outputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }
+                        ?.takeUnless { it in options.referenceLink }
+                        ?.let { yield(it) }
                 }
             }
         }
@@ -360,6 +401,7 @@ internal class Compiler(
             if (msg.options?.mapEntry?.value == true) return@sequence
             for (f in msg.fields) {
                 val tn = f.typeName?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() } ?: continue
+                if (tn in options.referenceLink) continue
                 yield(tn)
             }
             for (n in msg.nestedTypes) yieldAll(referencedTypeFqnsIn(n))
@@ -618,6 +660,7 @@ internal class Compiler(
                     fileToGroup = fileToGroup,
                     peerFileToGroup = peerFileToGroup,
                     mode = options.resolveReferenceLinksMode,
+                    referenceLinkOverrides = options.referenceLink,
                     hrefFor = { file, path -> hrefFor(file, path, group.filename) },
                 )
             } else {
@@ -1143,21 +1186,23 @@ internal class Compiler(
      * or the literal `null`.  Matches the formatting accepted by the `--markdown_out=` parameter
      * parser so the resulting line is a round-trippable snapshot of the compile invocation.
      */
-    private fun formatOptions(): String =
-        listOf(
-            "generateStableAnchors" to options.generateStableAnchors.toString(),
-            "generateInsertionPoints" to options.generateInsertionPoints.toString(),
-            "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null"),
-            "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null"),
-            "outputType" to options.outputType.name,
-            "includeIndices" to options.includeIndices.toString(),
-            "typeSortMode" to options.typeSortMode.name,
-            "fileSortMode" to options.fileSortMode.name,
-            "rpcSortMode" to options.rpcSortMode.name,
-            "fieldSortMode" to options.fieldSortMode.name,
-            "enumValueSortMode" to options.enumValueSortMode.name,
-            "resolveReferenceLinksMode" to options.resolveReferenceLinksMode.name,
-        ).joinToString(",") { (k, v) -> "$k=$v" }
+    private fun formatOptions(): String {
+        val parts = mutableListOf<Pair<String, String>>()
+        parts += "generateStableAnchors" to options.generateStableAnchors.toString()
+        parts += "generateInsertionPoints" to options.generateInsertionPoints.toString()
+        parts += "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null")
+        parts += "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null")
+        parts += "outputType" to options.outputType.name
+        parts += "includeIndices" to options.includeIndices.toString()
+        parts += "typeSortMode" to options.typeSortMode.name
+        parts += "fileSortMode" to options.fileSortMode.name
+        parts += "rpcSortMode" to options.rpcSortMode.name
+        parts += "fieldSortMode" to options.fieldSortMode.name
+        parts += "enumValueSortMode" to options.enumValueSortMode.name
+        parts += "resolveReferenceLinksMode" to options.resolveReferenceLinksMode.name
+        for ((label, url) in options.referenceLink) parts += "referenceLink" to "$label=$url"
+        return parts.joinToString(",") { (k, v) -> "$k=$v" }
+    }
 
     /**
      * `NodeRenderer` for [YamlFrontMatterBlock] and [YamlFrontMatterNode].  The
@@ -1328,11 +1373,29 @@ internal class Compiler(
     ) {
         val text = sci?.findLocation(locatable)?.leadingComments?.cleaned ?: return
         if (text.isBlank()) return
-        val parsed = parser.parse(text)
-        currentResolver?.rewrite(parsed, scopeFqn)
+        val parsed = parseUnderScope(text, scopeFqn)
         while (true) {
             val child = parsed.firstChild ?: break
             doc.appendChild(child)
+        }
+    }
+
+    /**
+     * Parse [text] with the active [ReferenceLinkResolver]'s scope bound to [scopeFqn] for
+     * the duration of the parse, so bracketed references inside the comment resolve relative
+     * to the descriptor that owns it.  Scope is cleared in a `finally` so a thrown parser
+     * exception cannot leak a stale scope into the next comment.
+     */
+    private fun parseUnderScope(
+        text: String,
+        scopeFqn: String,
+    ): Node {
+        val resolver = currentResolver
+        resolver?.setCurrentScope(scopeFqn)
+        return try {
+            parser.parse(text)
+        } finally {
+            resolver?.clearCurrentScope()
         }
     }
 
@@ -1439,6 +1502,12 @@ internal class Compiler(
             return
         }
         val leaf = cleaned.substringAfterLast('.').ifEmpty { "?" }
+        options.referenceLink[cleaned]?.let { url ->
+            val link = Link(url, null)
+            link.appendChild(Text(leaf))
+            cell.appendChild(link)
+            return
+        }
         val target = typeIndex[cleaned]
         if (target == null) {
             cell.appendChild(Text(leaf))
@@ -1639,8 +1708,7 @@ internal class Compiler(
         val cell = TableCell()
         val raw = sci?.findLocation(locatable)?.leadingComments?.cleaned
         if (raw.isNullOrBlank()) return cell to false
-        val parsed = parser.parse(raw)
-        currentResolver?.rewrite(parsed, scopeFqn)
+        val parsed = parseUnderScope(raw, scopeFqn)
         val firstBlock = parsed.firstChild ?: return cell to false
         val needsExpansion = firstBlock !is Paragraph || firstBlock.next != null
         if (firstBlock is Paragraph) {

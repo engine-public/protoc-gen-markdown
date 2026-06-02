@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.referencelinksyntax;
+
+option java_package = "com.engine.protoc.markdown.example.referencelinksyntax";
+option java_multiple_files = true;
+
+// Exercises three reference-link syntax forms the resolver supports beyond the canonical
+// `[label]` shortcut:
+//
+// 1. CommonMark full reference form `[display text][label]`.
+//    See the `submit` RPC below: `[Status.details][google.rpc.Status]` is rendered with
+//    `Status.details` as the visible link text and the URL drawn from the
+//    `referenceLink=google.rpc.Status=...` override the suite passes — the display text is
+//    NOT itself resolved.
+// 2. Backslash-escaped brackets `\[...\]`.
+//    See [Holder.tags]: the escaped `\["a", "b"\]` in the comment survives as literal text
+//    in the rendered output, with the brackets preserved and no resolver attempt.
+// 3. Field-scope bare-name resolution against the field's declared type.
+//    See [Holder.responsive]: although the package declares two `Responsive` messages (one
+//    nested inside `Holder`, one at the top level here), `[Responsive]` in the field's
+//    comment resolves to the specific message the field's type points at — local context
+//    wins over the otherwise-ambiguous global short name.
+message Holder {
+    // The shape this holder wraps.  Resolves to the [Responsive] declared at the top of
+    // this file (the field's declared type), even though there is also a nested
+    // `Holder.Responsive` sharing the same short name.
+    .engine.protoc.markdown.example.referencelinksyntax.Responsive responsive = 1;
+
+    // Tags categorizing the held content.
+    // Example: \["a", "b"\]
+    repeated string tags = 2;
+
+    // A nested message that shadows the top-level `Responsive` short name.  Used to prove
+    // that bare-name resolution from `[Holder.responsive]`'s field comment picks the
+    // declared target rather than this ambiguity-introducing sibling.
+    message Responsive {
+        string label = 1;
+    }
+}
+
+// The shape `Holder.responsive` points at.
+message Responsive {
+    string id = 1;
+}
+
+// Stand-in for a typical RPC that surfaces a structured error.
+service ExampleService {
+    // Submit a payload.
+    //
+    // In case of error, the status will contain an error detail within the
+    // [Status.details][google.rpc.Status] field.
+    rpc Submit(SubmitRequest) returns (SubmitResponse);
+}
+
+message SubmitRequest {
+    string payload = 1;
+}
+
+message SubmitResponse {
+    string result = 1;
+}

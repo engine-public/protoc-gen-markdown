@@ -310,9 +310,15 @@ public class ProtocGenMarkdown(
          */
         public val enumValueSortMode: MemberSortMode,
         /**
-         * Controls how shortcut-reference syntax inside proto leading comments — e.g.
+         * Controls how CommonMark reference-link syntax inside proto leading comments — e.g.
          * `[GreetingResponse]`, `[GreetingRequest.name]`, `[GreeterService.SayHello]` — is
-         * handled when rendering each comment block.
+         * handled when rendering each comment block.  Both the shortcut form (`[label]`)
+         * and the full form (`[display text][label]`) are recognized; in the full form the
+         * label inside the second brackets is the lookup key and the visible link text
+         * stays as the first brackets' content (so `[Status.details][google.rpc.Status]`
+         * pairs nicely with a [referenceLink] entry for `google.rpc.Status`).  Escaped
+         * brackets (`\[…\]`) follow CommonMark semantics — the parser sees them as literal
+         * text and the resolver is never invoked, so the brackets pass through unchanged.
          *
          *  - [ResolveReferenceLinksMode.NONE] — references are not rewritten; the parsed
          *    CommonMark AST is appended as-is and unresolved shortcut references survive as
@@ -333,7 +339,10 @@ public class ProtocGenMarkdown(
          *
          * The resolver honors the comment's own anchor descriptor for bare-name lookups, so
          * authors can write `[name]` inside a comment on `message User` and have it find
-         * `User.name` without the explicit qualifier.  The structural per-member
+         * `User.name` without the explicit qualifier.  Field- and RPC-scoped lookups also
+         * include the descriptor's declared target type by short name — `[Foo]` in a comment
+         * on a field of type `Foo` resolves to that specific target even when other types
+         * sharing the short name exist in the global scope.  The structural per-member
          * `Field Details` / `RPC Details` / `Value Details` headings are emitted regardless
          * of this option (they exist to anchor cross-references but are useful on their own
          * as deep-link targets).
@@ -377,6 +386,46 @@ public class ProtocGenMarkdown(
          * (case-insensitive) when provided via the parameter string.
          */
         public val transitiveReferences: TransitiveReferences,
+        /**
+         * Per-label URL overrides applied to two reference sites: shortcut-reference syntax
+         * inside proto leading comments, and field-type / RPC input-output cells whose declared
+         * type FQN matches a map key.  Each entry maps a bracketed label exactly as it appears
+         * in the comment (`[CoreEntity]`, `[Order.id]`, `[google.protobuf.Timestamp]`) — or, for
+         * the field/RPC cell path, the fully-qualified type name with no leading dot
+         * (`google.rpc.Status`) — to the URL the rewritten link should target.  When either
+         * resolver encounters a key that matches the requested label, the override URL wins
+         * unconditionally — no compile-scope, peer, or transitive lookup is performed for that
+         * label.  As a side effect, a reference whose only would-be target lives in a
+         * transitive dependency is not enough to pull that dependency in as a peer or promote
+         * it under [TransitiveReferences.INCLUDE_FILES]: the override answers the link without
+         * consulting the transitive index, and that single reference no longer counts toward
+         * the file's promotion criteria.  (A file pulled in by *other*, non-overridden
+         * references still gets promoted normally.)
+         *
+         * Labels not present in this map fall through to the normal resolution path, including
+         * [resolveReferenceLinksMode]'s WARN / FAIL_ON_INVALID handling for unresolved or
+         * ambiguous comment references.  Pair an override with
+         * [ResolveReferenceLinksMode.FAIL_ON_INVALID] (the default) to keep comment links
+         * tightly checked while still pointing a known-external label at an external URL.
+         *
+         * Passed via repeated entries in the parameter string, each of the form
+         * `referenceLink=<label>=<URL>`; the `Parameters` parser splits on `=` with a limit of
+         * two, so the URL may contain additional `=` characters.  Entries with no `=` separator
+         * are rejected with an [IllegalArgumentException] from the parameter parser.  The map
+         * preserves entry order (parameter-string order) so the frontmatter snapshot
+         * round-trips it deterministically.
+         *
+         * URLs containing `:` cannot be passed inside `--markdown_out=…:<outdir>` because
+         * protoc splits options from the output directory on the first `:` — use
+         * `--markdown_opt=referenceLink=<label>=<URL>` for those (one `--markdown_opt` per
+         * entry).  The Gradle `protobuf` plugin's `option(...)` DSL currently routes through
+         * `--markdown_out=…`, so pass `:`-bearing URLs as `--markdown_opt=…` via a manual
+         * protoc invocation or use a URL form without `:` (e.g. a site-relative path).
+         *
+         * Default: empty map — no overrides applied; every comment reference goes through the
+         * normal resolver.
+         */
+        public val referenceLink: Map<String, String>,
     ) {
 
         /** Output-file shape selected by [Options.outputType]. */
@@ -445,6 +494,19 @@ public class ProtocGenMarkdown(
             public var transitiveReferences: TransitiveReferences =
                 parameters.get<TransitiveReferences>("transitiveReferences") ?: TransitiveReferences.LINK_AS_PEER
 
+            public var referenceLink: Map<String, String> =
+                parameters.get<List<String>>("referenceLink")?.let { entries ->
+                    val map = LinkedHashMap<String, String>()
+                    for (entry in entries) {
+                        val idx = entry.indexOf('=')
+                        require(idx > 0 && idx < entry.length - 1) {
+                            "referenceLink entry must be of the form <label>=<URL>, got `$entry`"
+                        }
+                        map[entry.substring(0, idx)] = entry.substring(idx + 1)
+                    }
+                    map
+                } ?: emptyMap()
+
             public companion object {
                 public fun from(parameters: Parameters): Builder = Builder(parameters)
             }
@@ -466,6 +528,7 @@ public class ProtocGenMarkdown(
                     enumValueSortMode = enumValueSortMode,
                     resolveReferenceLinksMode = resolveReferenceLinksMode,
                     transitiveReferences = transitiveReferences,
+                    referenceLink = referenceLink,
                 )
         }
     }
