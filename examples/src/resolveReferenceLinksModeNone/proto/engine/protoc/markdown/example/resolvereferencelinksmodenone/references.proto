@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.resolvereferencelinksmodenone;
+
+option java_package = "com.engine.protoc.markdown.example.resolvereferencelinksmodenone";
+option java_multiple_files = true;
+
+// A type that exists in scope so its name `[Existing]` would resolve under
+// `resolveReferenceLinksMode=WARN` or the default `FAIL_ON_INVALID`.
+message Existing {
+    string label = 1;
+}
+
+// Comments here contain shortcut-reference syntax that WOULD resolve under
+// `resolveReferenceLinksMode=WARN` or the default `FAIL_ON_INVALID`.  See [Existing]
+// for the type that would have linked, and [Missing] for the name that doesn't exist
+// in scope.  With this suite's `resolveReferenceLinksMode=NONE`, both stay literal
+// `[…]` text; compare against the `hello` suite fixture for the on-by-default
+// rendering.
+message Referencer {
+    string note = 1;
+}

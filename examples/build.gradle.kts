@@ -18,11 +18,12 @@ plugins {
 val suiteRecorderOptions =
     mapOf(
         "hello" to emptyList<String>(),
-        "generateStableAnchors" to listOf("generateStableAnchors=true"),
-        "generateInsertionPoints" to listOf("generateInsertionPoints=true"),
-        "tableOfContentsHeaders" to listOf("minTableOfContentsHeader=2", "maxTableOfContentsHeader=3"),
-        "outputTypePerPackage" to listOf("outputType=PER_PACKAGE", "minTableOfContentsHeader=2", "maxTableOfContentsHeader=4", "generateInsertionPoints=true"),
-        "outputTypePerSession" to listOf("outputType=PER_SESSION", "minTableOfContentsHeader=2", "maxTableOfContentsHeader=4", "generateInsertionPoints=true"),
+        "generateStableAnchorsOff" to listOf("generateStableAnchors=false"),
+        "generateInsertionPointsOff" to listOf("generateInsertionPoints=false"),
+        "tableOfContentsHeadersWide" to listOf("minTableOfContentsHeader=1", "maxTableOfContentsHeader=5"),
+        "outputTypePerPackage" to listOf("outputType=PER_PACKAGE", "maxTableOfContentsHeader=4"),
+        "includePackageIndicesOff" to listOf("includePackageIndices=false"),
+        "outputTypePerSession" to listOf("outputType=PER_SESSION", "maxTableOfContentsHeader=4"),
         "typeSortModeEncounter" to listOf("typeSortMode=ENCOUNTER"),
         "fileSortModeEncounter" to listOf("fileSortMode=ENCOUNTER", "outputType=PER_PACKAGE"),
         "rpcSortModeAlphabetical" to listOf("rpcSortMode=ALPHABETICAL"),
@@ -30,6 +31,8 @@ val suiteRecorderOptions =
         "fieldSortModeNumber" to listOf("fieldSortMode=NUMBER"),
         "enumValueSortModeAlphabetical" to listOf("enumValueSortMode=ALPHABETICAL"),
         "enumValueSortModeNumber" to listOf("enumValueSortMode=NUMBER"),
+        "resolveReferenceLinksModeNone" to listOf("resolveReferenceLinksMode=NONE"),
+        "resolveReferenceLinksModeWarn" to listOf("resolveReferenceLinksMode=WARN"),
     )
 
 dependencies {

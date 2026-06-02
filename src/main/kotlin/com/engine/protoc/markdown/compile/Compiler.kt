@@ -169,6 +169,15 @@ internal class Compiler(
     private var bodyLevelShift: Int = 0
 
     /**
+     * Per-output-document [ReferenceLinkResolver], constructed at the top of [outlineDocument]
+     * with `currentMd` bound to that document's filename so the resolver can produce both bare
+     * `#anchor` hrefs (target lives in the same consolidated file) and relative-path hrefs
+     * (target lives in a sibling output file).  `null` when [ProtocGenMarkdown.Options.resolveReferenceLinks]
+     * is off, in which case [appendLeadingComment] skips the rewrite step entirely.
+     */
+    private var currentResolver: ReferenceLinkResolver? = null
+
+    /**
      * A single output `.md` file the compiler will emit: a filename plus the (one or more) input
      * proto files whose content lands in it, plus the H1 title text that heads it.  In
      * [ProtocGenMarkdown.Options.OutputType.PER_FILE] the group always contains exactly one
@@ -179,7 +188,7 @@ internal class Compiler(
      * single group containing every file in the compile request and the title is the longest
      * common package prefix across them (or `overview` when none exists).
      */
-    private data class OutputGroup(
+    internal data class OutputGroup(
         val filename: String,
         val files: List<FileDescriptorProtoWrapper>,
         val title: String,
@@ -191,9 +200,53 @@ internal class Compiler(
 
     internal fun compile(): PluginProtos.CodeGeneratorResponse {
         val response = CodeGeneratorResponseWrapper()
-        for (group in outputGroups) response.addFile(group.filename, render(outlineDocument(group)))
+        val collectedFailures = mutableListOf<ReferenceLinkResolver.Failure>()
+        for (group in outputGroups) {
+            response.addFile(group.filename, render(outlineDocument(group)))
+            currentResolver?.drainFailures()?.let { collectedFailures += it }
+        }
+        for (group in packageIndexGroups) {
+            response.addFile(group.filename, render(packageIndexDocument(group)))
+        }
+        if (collectedFailures.isNotEmpty() &&
+            options.resolveReferenceLinksMode == ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID
+        ) {
+            response.addError(formatReferenceLinkFailures(collectedFailures))
+        }
         return response.build()
     }
+
+    /**
+     * Format every collected resolver failure as a human-readable multi-line error message.
+     * Each line names the proto file, the descriptor whose comment held the bad reference, the
+     * bracketed label, and the reason (unresolved or ambiguous with the colliding candidates).
+     */
+    private fun formatReferenceLinkFailures(failures: List<ReferenceLinkResolver.Failure>): String =
+        buildString {
+            append("protoc-gen-markdown: ")
+            append(failures.size)
+            append(if (failures.size == 1) " reference-link failure under " else " reference-link failures under ")
+            appendLine("resolveReferenceLinksMode=FAIL_ON_INVALID:")
+            for (f in failures) {
+                append("  - ")
+                append(f.protoFile)
+                append(" :: ")
+                append(f.scopeFqn.ifEmpty { "(file scope)" })
+                append(" :: [")
+                append(f.label)
+                append("] — ")
+                when (val r = f.reason) {
+                    is ReferenceLinkResolver.FailureReason.Unresolved ->
+                        append("no matching type, field, enum value, or RPC in compile scope")
+
+                    is ReferenceLinkResolver.FailureReason.Ambiguous -> {
+                        append("ambiguous; candidates: ")
+                        append(r.candidates.joinToString("; "))
+                    }
+                }
+                appendLine()
+            }
+        }
 
     private val scopeFiles: List<FileDescriptorProtoWrapper> by lazy {
         val toGenerate = request.filesToGenerate.toSet()
@@ -248,6 +301,51 @@ internal class Compiler(
     }
 
     private fun perFileFilename(file: FileDescriptorProtoWrapper): String = (file.name ?: "").removeSuffix(".proto") + ".md"
+
+    /**
+     * The set of filenames the per-file output groups will land at, captured for the
+     * package-index collision guard.  Only populated under
+     * [ProtocGenMarkdown.Options.OutputType.PER_FILE]; empty otherwise (the consolidated modes
+     * don't emit per-file `.md`s alongside their package/session files, so there's nothing for
+     * an index to collide with).
+     */
+    private val perFileFilenames: Set<String> by lazy {
+        if (options.outputType == ProtocGenMarkdown.Options.OutputType.PER_FILE) {
+            scopeFiles.map { perFileFilename(it) }.toSet()
+        } else {
+            emptySet()
+        }
+    }
+
+    /**
+     * Per-package navigation index files emitted alongside the per-file documents when
+     * [ProtocGenMarkdown.Options.includePackageIndices] is on and
+     * [ProtocGenMarkdown.Options.outputType] is [ProtocGenMarkdown.Options.OutputType.PER_FILE].
+     * Empty otherwise — no-op under the consolidated [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE]
+     * / [ProtocGenMarkdown.Options.OutputType.PER_SESSION] modes, which already produce a single
+     * package/session document.  Filename rules mirror [packageGroup]; index whose computed
+     * filename collides with a per-file output (e.g. a proto literally named `<pkg>/package.proto`)
+     * is dropped with a warning so the per-file document wins.
+     */
+    private val packageIndexGroups: List<OutputGroup> by lazy {
+        if (options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE || !options.includePackageIndices) {
+            return@lazy emptyList()
+        }
+        val byPkg = LinkedHashMap<String, MutableList<FileDescriptorProtoWrapper>>()
+        for (f in scopeFiles) byPkg.getOrPut(f.`package`?.value.orEmpty()) { mutableListOf() } += f
+        byPkg.mapNotNull { (pkg, pkgFiles) ->
+            val group = packageGroup(pkg, pkgFiles)
+            if (group.filename in perFileFilenames) {
+                log.log(
+                    System.Logger.Level.WARNING,
+                    "skipping package index for '${pkg.ifEmpty { "(no package)" }}': filename ${group.filename} collides with a per-file output",
+                )
+                null
+            } else {
+                group
+            }
+        }
+    }
 
     /**
      * Output-file shape for a single proto package's worth of files under
@@ -349,6 +447,19 @@ internal class Compiler(
     private fun outlineDocument(group: OutputGroup): Document {
         headings.clear()
         bodyLevelShift = if (group.consolidated) 1 else 0
+        currentResolver =
+            if (options.resolveReferenceLinksMode != ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE) {
+                ReferenceLinkResolver(
+                    scopeFiles = scopeFiles,
+                    options = options,
+                    fileToGroup = fileToGroup,
+                    mode = options.resolveReferenceLinksMode,
+                    log = log,
+                    hrefFor = { file, path -> hrefFor(file, path, group.filename) },
+                )
+            } else {
+                null
+            }
         val doc = Document()
         val groupPath = listOf(group.title)
         doc.appendChild(frontmatterBlock())
@@ -357,12 +468,7 @@ internal class Compiler(
             appendInsertionPoint(doc, "file_header")
         }
 
-        val files =
-            group.files.map { f ->
-                val messages = sortedNamedTypes(collectMessages(f))
-                val enums = sortedNamedTypes(collectEnums(f, messages))
-                FileBody(f, sortedServices(f.services), messages, enums)
-            }
+        val files = group.files.map(::fileBodyOf)
         val hasBody = files.any { it.hasBody }
         val thematicBreak: ThematicBreak? = if (hasBody) ThematicBreak().also { doc.appendChild(it) } else null
 
@@ -388,6 +494,159 @@ internal class Compiler(
         val enums: List<Pair<String, EnumDescriptorProtoWrapper>>,
     ) {
         val hasBody: Boolean = services.isNotEmpty() || messages.isNotEmpty() || enums.isNotEmpty()
+    }
+
+    /**
+     * Materialize a file's [FileBody] — the once-walked, sort-mode-applied lists of services,
+     * messages, and enums [outlineDocument] and the package-index renderer both iterate over.
+     * Lifted out of [outlineDocument] so [packageIndexDocument] can call it without going
+     * through the per-file rendering path.
+     */
+    private fun fileBodyOf(file: FileDescriptorProtoWrapper): FileBody {
+        val messages = sortedNamedTypes(collectMessages(file))
+        val enums = sortedNamedTypes(collectEnums(file, messages))
+        return FileBody(file, sortedServices(file.services), messages, enums)
+    }
+
+    /**
+     * Render the navigation-only `.md` for a package index group.  The document carries the
+     * shared frontmatter and a single H1 with the group title (the dotted package name, or
+     * `(no package)` for files with no `package` directive), then a `file → section → type →
+     * member` bulleted Table of Contents whose every entry hyperlinks to an anchor inside
+     * one of the per-file `.md`s.  Anchor naming honors
+     * [ProtocGenMarkdown.Options.generateStableAnchors] via [hrefFor].
+     *
+     * Built directly out of [Heading] / [BulletList] / [ListItem] nodes — no calls to
+     * [headingOf] / [fixedHeading], which would scribble entries into the shared [headings]
+     * list that the per-file Table of Contents consumes.  Sort order mirrors the per-file
+     * documents so a member-level bullet here lines up with the matching expansion there.
+     */
+    private fun packageIndexDocument(group: OutputGroup): Document {
+        val doc = Document()
+        doc.appendChild(frontmatterBlock())
+        val titlePath = listOf(group.title)
+        doc.appendChild(
+            Heading().apply {
+                level = 1
+                if (options.generateStableAnchors) appendChild(htmlInline("<a id=\"${pathAnchor(titlePath)}\"></a>"))
+                appendChild(Text(group.title))
+            },
+        )
+        appendInsertionPoint(doc, "file_header")
+
+        val bodies = group.files.map(::fileBodyOf)
+        if (bodies.any { it.hasBody }) doc.appendChild(ThematicBreak())
+
+        val outer = BulletList()
+        val currentMd = group.filename
+        for (body in bodies) outer.appendChild(packageIndexFileItem(body, currentMd))
+        if (outer.firstChild != null) doc.appendChild(outer)
+
+        appendInsertionPoint(doc, "file_footer")
+        return doc
+    }
+
+    /**
+     * Build the `<li>` for one input proto under a package index: a paragraph linking to the
+     * file's per-file `.md` H1 anchor, followed by a nested bullet list with one item per
+     * non-empty section (Services / Messages / Enums), each containing per-type bullets that
+     * in turn carry per-member bullets.  Member entry paths mirror the per-file
+     * [appendRpcTable] / [appendFieldsTable] / [appendValuesTable] heading paths so the
+     * cross-file href lands on the same `##### <name>` heading the in-file
+     * `[...](#…)` expansion lands on.
+     */
+    private fun packageIndexFileItem(
+        body: FileBody,
+        currentMd: String,
+    ): ListItem {
+        val file = body.file
+        val fileTitle = titleOf(file)
+        val filePath = listOf(fileTitle)
+        val item = ListItem().apply { appendChild(crossFileLinkParagraph(fileTitle, file, filePath, currentMd)) }
+
+        val inner = BulletList()
+        if (body.services.isNotEmpty()) {
+            val sectionPath = filePath + "Services"
+            val sectionItem = ListItem().apply { appendChild(crossFileLinkParagraph("Services", file, sectionPath, currentMd)) }
+            val typesList = BulletList()
+            for (s in body.services) {
+                val sname = s.name?.value ?: "(unnamed)"
+                val svcPath = sectionPath + sname
+                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(sname, file, svcPath, currentMd)) }
+                if (s.methods.isNotEmpty()) {
+                    val members = BulletList()
+                    val detailsPath = svcPath + "RPC Details"
+                    for (m in sortedMethods(s.methods)) {
+                        val mname = m.name?.value ?: "(unnamed)"
+                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(mname, file, detailsPath + mname, currentMd)) })
+                    }
+                    typeItem.appendChild(members)
+                }
+                typesList.appendChild(typeItem)
+            }
+            sectionItem.appendChild(typesList)
+            inner.appendChild(sectionItem)
+        }
+        if (body.messages.isNotEmpty()) {
+            val sectionPath = filePath + "Messages"
+            val sectionItem = ListItem().apply { appendChild(crossFileLinkParagraph("Messages", file, sectionPath, currentMd)) }
+            val typesList = BulletList()
+            for ((name, msg) in body.messages) {
+                val msgPath = sectionPath + name
+                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(name, file, msgPath, currentMd)) }
+                if (msg.fields.isNotEmpty()) {
+                    val members = BulletList()
+                    val detailsPath = msgPath + "Field Details"
+                    for (f in sortedFields(msg.fields)) {
+                        val fname = f.name?.value ?: "(unnamed)"
+                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(fname, file, detailsPath + fname, currentMd)) })
+                    }
+                    typeItem.appendChild(members)
+                }
+                typesList.appendChild(typeItem)
+            }
+            sectionItem.appendChild(typesList)
+            inner.appendChild(sectionItem)
+        }
+        if (body.enums.isNotEmpty()) {
+            val sectionPath = filePath + "Enums"
+            val sectionItem = ListItem().apply { appendChild(crossFileLinkParagraph("Enums", file, sectionPath, currentMd)) }
+            val typesList = BulletList()
+            for ((name, enum) in body.enums) {
+                val enumPath = sectionPath + name
+                val typeItem = ListItem().apply { appendChild(crossFileLinkParagraph(name, file, enumPath, currentMd)) }
+                if (enum.values.isNotEmpty()) {
+                    val members = BulletList()
+                    val detailsPath = enumPath + "Value Details"
+                    for (v in sortedEnumValues(enum.values)) {
+                        val vname = v.name?.value ?: "(unnamed)"
+                        members.appendChild(ListItem().apply { appendChild(crossFileLinkParagraph(vname, file, detailsPath + vname, currentMd)) })
+                    }
+                    typeItem.appendChild(members)
+                }
+                typesList.appendChild(typeItem)
+            }
+            sectionItem.appendChild(typesList)
+            inner.appendChild(sectionItem)
+        }
+        if (inner.firstChild != null) item.appendChild(inner)
+        return item
+    }
+
+    /**
+     * Wrap [hrefFor] in a one-link [Paragraph] for use as a [ListItem] body in
+     * [packageIndexFileItem].  Centralizes the cross-file link composition so every bullet in
+     * the index — file, section, type, and member — goes through the same path/anchor pipeline
+     * as summary-table type cells and resolved comment references.
+     */
+    private fun crossFileLinkParagraph(
+        text: String,
+        targetFile: FileDescriptorProtoWrapper,
+        path: List<String>,
+        currentMd: String,
+    ): Paragraph {
+        val link = Link(hrefFor(targetFile, path, currentMd), null).apply { appendChild(Text(text)) }
+        return Paragraph().apply { appendChild(link) }
     }
 
     private fun appendFileBody(
@@ -424,12 +683,13 @@ internal class Compiler(
             appendInsertionPoint(doc, "services_section")
             for (s in body.services) {
                 val sname = s.name?.value ?: "(unnamed)"
+                val sFqn = fqn(sname)
                 val svcPath = sectionPath + sname
                 doc.appendChild(headingOf(HEADING_TYPE, sname, svcPath))
-                appendInsertionPoint(doc, "service_header_scope:${fqn(sname)}")
-                appendLeadingComment(doc, sci, s)
-                appendInsertionPoint(doc, "service_scope:${fqn(sname)}")
-                appendRpcTable(doc, s, sci, currentMd, svcPath)
+                appendInsertionPoint(doc, "service_header_scope:$sFqn")
+                appendLeadingComment(doc, sci, s, scopeFqn = sFqn)
+                appendInsertionPoint(doc, "service_scope:$sFqn")
+                appendRpcTable(doc, s, sci, currentMd, svcPath, sFqn)
             }
         }
 
@@ -439,12 +699,13 @@ internal class Compiler(
             doc.appendChild(headingOf(HEADING_SECTION, "Messages", sectionPath))
             appendInsertionPoint(doc, "messages_section")
             for ((name, msg) in body.messages) {
+                val mFqn = fqn(name)
                 val msgPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, msgPath))
-                appendInsertionPoint(doc, "message_header_scope:${fqn(name)}")
-                appendLeadingComment(doc, sci, msg)
-                appendInsertionPoint(doc, "message_scope:${fqn(name)}")
-                appendFieldsTable(doc, msg, sci, currentMd, msgPath)
+                appendInsertionPoint(doc, "message_header_scope:$mFqn")
+                appendLeadingComment(doc, sci, msg, scopeFqn = mFqn)
+                appendInsertionPoint(doc, "message_scope:$mFqn")
+                appendFieldsTable(doc, msg, sci, currentMd, msgPath, mFqn)
             }
         }
 
@@ -454,12 +715,13 @@ internal class Compiler(
             doc.appendChild(headingOf(HEADING_SECTION, "Enums", sectionPath))
             appendInsertionPoint(doc, "enums_section")
             for ((name, enum) in body.enums) {
+                val eFqn = fqn(name)
                 val enumPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, enumPath))
-                appendInsertionPoint(doc, "enum_header_scope:${fqn(name)}")
-                appendLeadingComment(doc, sci, enum)
-                appendInsertionPoint(doc, "enum_scope:${fqn(name)}")
-                appendValuesTable(doc, enum, sci, enumPath)
+                appendInsertionPoint(doc, "enum_header_scope:$eFqn")
+                appendLeadingComment(doc, sci, enum, scopeFqn = eFqn)
+                appendInsertionPoint(doc, "enum_scope:$eFqn")
+                appendValuesTable(doc, enum, sci, enumPath, eFqn)
             }
         }
     }
@@ -680,11 +942,13 @@ internal class Compiler(
             "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null"),
             "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null"),
             "outputType" to options.outputType.name,
+            "includePackageIndices" to options.includePackageIndices.toString(),
             "typeSortMode" to options.typeSortMode.name,
             "fileSortMode" to options.fileSortMode.name,
             "rpcSortMode" to options.rpcSortMode.name,
             "fieldSortMode" to options.fieldSortMode.name,
             "enumValueSortMode" to options.enumValueSortMode.name,
+            "resolveReferenceLinksMode" to options.resolveReferenceLinksMode.name,
         ).joinToString(",") { (k, v) -> "$k=$v" }
 
     /**
@@ -842,15 +1106,22 @@ internal class Compiler(
      * Look up the leading proto comment for [locatable] and append its parsed CommonMark blocks
      * to [doc].  Treats the cleaned comment text as a CommonMark fragment, so lists, blockquotes,
      * fenced code, links, etc. round-trip through the AST and re-render correctly.
+     *
+     * When [ProtocGenMarkdown.Options.resolveReferenceLinks] is on and [scopeFqn] is non-empty,
+     * the parsed AST is passed through [currentResolver]'s `rewrite` step before being spliced
+     * into [doc] — converting shortcut-reference `[name]` patterns into real [Link] nodes when
+     * the name resolves against the compile-scope's types and members.
      */
     private fun appendLeadingComment(
         doc: Document,
         sci: SourceCodeInfoWrapper?,
         locatable: Locatable,
+        scopeFqn: String = "",
     ) {
         val text = sci?.findLocation(locatable)?.leadingComments?.cleaned ?: return
         if (text.isBlank()) return
         val parsed = parser.parse(text)
+        currentResolver?.rewrite(parsed, scopeFqn)
         while (true) {
             val child = parsed.firstChild ?: break
             doc.appendChild(child)
@@ -865,13 +1136,14 @@ internal class Compiler(
         sci: SourceCodeInfoWrapper?,
         currentMd: String,
         msgPath: List<String>,
+        msgFqn: String,
     ) {
         if (msg.fields.isEmpty()) return
 
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Summary", msgPath + "Field Summary"))
 
         val detailsPath = msgPath + "Field Details"
-        val expanded = mutableListOf<FieldDescriptorProtoWrapper>()
+        val perField = mutableListOf<Pair<FieldDescriptorProtoWrapper, Boolean>>()
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Type", "Description"))
@@ -883,19 +1155,17 @@ internal class Compiler(
             row.appendChild(typeCell(field, currentMd))
             val (cell, needsExpansion) = descriptionCell(field, sci, detailsPath)
             row.appendChild(cell)
-            if (needsExpansion) expanded += field
+            perField += field to needsExpansion
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
-        if (expanded.isNotEmpty()) {
-            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Details", detailsPath))
-            for (field in expanded) {
-                val fname = field.name?.value ?: "(unnamed)"
-                doc.appendChild(headingOf(HEADING_FIELD, fname, detailsPath + fname))
-                appendLeadingComment(doc, sci, field)
-            }
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Details", detailsPath))
+        for ((field, expand) in perField) {
+            val fname = field.name?.value ?: "(unnamed)"
+            doc.appendChild(headingOf(HEADING_FIELD, fname, detailsPath + fname))
+            if (expand) appendLeadingComment(doc, sci, field, scopeFqn = "$msgFqn.$fname")
         }
     }
 
@@ -970,23 +1240,37 @@ internal class Compiler(
                 } else {
                     listOf(targetGroup.title, section, target.localName)
                 }
-            val anchor =
-                if (options.generateStableAnchors) {
-                    pathAnchor(targetHeadingPath)
-                } else {
-                    slugify(target.localName)
-                }
-            val href =
-                if (targetGroup.consolidated && targetGroup.filename == currentMd) {
-                    "#$anchor"
-                } else {
-                    relativeLink(currentMd, targetGroup.filename) + "#" + anchor
-                }
+            val href = hrefFor(target.file, targetHeadingPath, currentMd)
             val link = Link(href, null)
             link.appendChild(Text(leaf))
             cell.appendChild(link)
         } else {
             cell.appendChild(Text(leaf))
+        }
+    }
+
+    /**
+     * Compute the href for a target whose heading lives at [targetHeadingPath] inside
+     * [targetFile]'s output group, viewed from a document being rendered into [currentMd].
+     * Collapses to a bare `#anchor` when the target and current document are the same
+     * consolidated output file; otherwise builds a relative-path + fragment.  Anchor naming
+     * honors [ProtocGenMarkdown.Options.generateStableAnchors] via [anchorFor].
+     *
+     * Shared by [appendTypeReference] (field-type cells, RPC-input/output cells) and
+     * [ReferenceLinkResolver] (comment-body references) so the two paths can't drift on the
+     * "where does this target live" rules.
+     */
+    internal fun hrefFor(
+        targetFile: FileDescriptorProtoWrapper,
+        targetHeadingPath: List<String>,
+        currentMd: String,
+    ): String {
+        val anchor = anchorFor(targetHeadingPath)
+        val targetGroup = fileToGroup[targetFile]!!
+        return if (targetGroup.consolidated && targetGroup.filename == currentMd) {
+            "#$anchor"
+        } else {
+            relativeLink(currentMd, targetGroup.filename) + "#" + anchor
         }
     }
 
@@ -998,12 +1282,13 @@ internal class Compiler(
         sci: SourceCodeInfoWrapper?,
         currentMd: String,
         svcPath: List<String>,
+        serviceFqn: String,
     ) {
         if (service.methods.isEmpty()) return
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Summary", svcPath + "RPC Summary"))
 
         val detailsPath = svcPath + "RPC Details"
-        val expanded = mutableListOf<MethodDescriptorProtoWrapper>()
+        val perMethod = mutableListOf<Pair<MethodDescriptorProtoWrapper, Boolean>>()
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Input", "Output", "Description"))
@@ -1016,19 +1301,17 @@ internal class Compiler(
             row.appendChild(rpcTypeCell(method.outputType?.value, method.serverStreaming?.value == true, currentMd))
             val (cell, needsExpansion) = summaryDescriptionCell(sci, method, method.name?.value ?: "(unnamed)", detailsPath)
             row.appendChild(cell)
-            if (needsExpansion) expanded += method
+            perMethod += method to needsExpansion
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
-        if (expanded.isNotEmpty()) {
-            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Details", detailsPath))
-            for (method in expanded) {
-                val mname = method.name?.value ?: "(unnamed)"
-                doc.appendChild(headingOf(HEADING_FIELD, mname, detailsPath + mname))
-                appendLeadingComment(doc, sci, method)
-            }
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Details", detailsPath))
+        for ((method, expand) in perMethod) {
+            val mname = method.name?.value ?: "(unnamed)"
+            doc.appendChild(headingOf(HEADING_FIELD, mname, detailsPath + mname))
+            if (expand) appendLeadingComment(doc, sci, method, scopeFqn = "$serviceFqn.$mname")
         }
     }
 
@@ -1050,12 +1333,13 @@ internal class Compiler(
         enum: EnumDescriptorProtoWrapper,
         sci: SourceCodeInfoWrapper?,
         enumPath: List<String>,
+        enumFqn: String,
     ) {
         if (enum.values.isEmpty()) return
         doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Summary", enumPath + "Value Summary"))
 
         val detailsPath = enumPath + "Value Details"
-        val expanded = mutableListOf<EnumValueDescriptorProtoWrapper>()
+        val perValue = mutableListOf<Pair<EnumValueDescriptorProtoWrapper, Boolean>>()
         val table = TableBlock()
         val head = TableHead()
         head.appendChild(headerRow("Name", "Number", "Description"))
@@ -1068,19 +1352,17 @@ internal class Compiler(
             row.appendChild(TableCell().apply { appendChild(Text(value.number?.value?.toString() ?: "?")) })
             val (cell, needsExpansion) = summaryDescriptionCell(sci, value, vname, detailsPath)
             row.appendChild(cell)
-            if (needsExpansion) expanded += value
+            perValue += value to needsExpansion
             body.appendChild(row)
         }
         table.appendChild(body)
         doc.appendChild(table)
 
-        if (expanded.isNotEmpty()) {
-            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Details", detailsPath))
-            for (value in expanded) {
-                val vname = value.name?.value ?: "(unnamed)"
-                doc.appendChild(headingOf(HEADING_FIELD, vname, detailsPath + vname))
-                appendLeadingComment(doc, sci, value)
-            }
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Details", detailsPath))
+        for ((value, expand) in perValue) {
+            val vname = value.name?.value ?: "(unnamed)"
+            doc.appendChild(headingOf(HEADING_FIELD, vname, detailsPath + vname))
+            if (expand) appendLeadingComment(doc, sci, value, scopeFqn = "$enumFqn.$vname")
         }
     }
 

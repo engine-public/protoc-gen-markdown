@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.includepackageindicesoff;
+
+import "engine/protoc/markdown/example/includepackageindicesoff/core.proto";
+
+option java_package = "com.engine.protoc.markdown.example.includepackageindicesoff";
+option java_multiple_files = true;
+
+// Activity events emitted by `UserService` in `core.proto`.
+//
+// References `User` and `UserRole` across files in the same package; with this suite's
+// `includePackageIndices=false` no per-package navigation `.md` is emitted — only the
+// two per-file `.md`s, whose cross-file type-cell links still resolve correctly between
+// the two protos.
+
+// One audit-log entry.
+message Event {
+    // The user the event is about.
+    User subject = 1;
+
+    // What the user did.
+    EventKind kind = 2;
+}
+
+// The kind of action recorded by an Event.
+enum EventKind {
+    EVENT_KIND_UNSPECIFIED = 0;
+    EVENT_KIND_CREATED = 1;
+    EVENT_KIND_UPDATED = 2;
+    EVENT_KIND_DELETED = 3;
+}

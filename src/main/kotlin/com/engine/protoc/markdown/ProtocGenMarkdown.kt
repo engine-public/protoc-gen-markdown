@@ -23,20 +23,20 @@ public class ProtocGenMarkdown(
      */
     public class Options private constructor(
         /**
-         * When true, every emitted heading is prefixed with an inline empty `<a id="…"></a>`
-         * whose id is the heading's full ancestor-path joined with `-` (non-alphanumeric chars
-         * other than `-`/`_` replaced with `_`).  Intra-document links (the Table of Contents,
-         * the `[...](#…)` field-/RPC-/value-expansion links inside summary tables) target those
-         * path-based ids, so same-named headings under different parents — e.g. two `### Foo`
-         * under different message sections — stay distinct.
+         * When true (default), every emitted heading is prefixed with an inline empty
+         * `<a id="…"></a>` whose id is the heading's full ancestor-path joined with `-`
+         * (non-alphanumeric chars other than `-`/`_` replaced with `_`).  Intra-document links
+         * (the Table of Contents, the `[...](#…)` field-/RPC-/value-expansion links inside
+         * summary tables) target those path-based ids, so same-named headings under different
+         * parents — e.g. two `### Foo` under different message sections — stay distinct.
          *
-         * When false (default), no `<a id>` element is emitted; headings render as plain
+         * When false, no `<a id>` element is emitted; headings render as plain
          * `## Heading text` and intra-document links target the renderer's default auto-anchor
          * derived from the heading text (lowercased, whitespace → `-`, non-alphanumeric dropped).
          * Cheaper output, but headings whose text collides — two nested `Outer.Inner` messages
          * named the same under different scopes, or two fields named the same under different
-         * messages — will resolve to whichever the renderer disambiguated first.  Flip this on
-         * when collisions matter; leave it off when they don't.
+         * messages — will resolve to whichever the renderer disambiguated first.  Flip this off
+         * when collisions don't matter; leave it on when they do.
          */
         public val generateStableAnchors: Boolean,
         /**
@@ -85,9 +85,9 @@ public class ProtocGenMarkdown(
          * `foo.bar.Outer.Inner`).  When the file has no `package` directive the bare dotted name
          * is used (no leading dot).
          *
-         * Default `false` — the markers are not emitted at all, and the output is byte-identical
-         * to a build with this option absent (apart from this option line in the YAML
-         * frontmatter).
+         * Default `true`.  When set to `false` the markers are not emitted at all, and the
+         * output is byte-identical to a build with this option absent (apart from this option
+         * line in the YAML frontmatter).
          */
         public val generateInsertionPoints: Boolean,
         /**
@@ -98,7 +98,9 @@ public class ProtocGenMarkdown(
          * `Value Details` sub-section headers are L4, and the individual `##### <name>` headings
          * inside the `Details` sub-sections are L5.
          *
-         * Default `null`.  Behavior when combined with [maxTableOfContentsHeader]:
+         * Default `2` — paired with [maxTableOfContentsHeader]'s default of `3`, the TOC covers
+         * the per-file section headings (`Services` / `Messages` / `Enums`) and the
+         * per-service/message/enum L3 headings.  Behavior when combined with [maxTableOfContentsHeader]:
          *  - both `null` → no Table of Contents is rendered at all.
          *  - this `null`, [maxTableOfContentsHeader] set → treated as `1` (so the TOC starts from
          *    the L1 file-path heading).
@@ -114,9 +116,11 @@ public class ProtocGenMarkdown(
         public val minTableOfContentsHeader: Int?,
         /**
          * Upper bound (inclusive) of the heading levels that appear in the Table of Contents.
-         * See [minTableOfContentsHeader] for level semantics and the interaction matrix.  Default
-         * `null` (treated as unbounded when [minTableOfContentsHeader] is set; both `null` means
-         * no TOC at all).  Must parse as an integer when provided.
+         * See [minTableOfContentsHeader] for level semantics and the interaction matrix.
+         * Default `3` — paired with [minTableOfContentsHeader]'s default of `2`, the TOC covers
+         * the section / type-name layer.  `null` (treated as unbounded when
+         * [minTableOfContentsHeader] is set; both `null` means no TOC at all) widens or
+         * disables the TOC.  Must parse as an integer when provided.
          */
         public val maxTableOfContentsHeader: Int?,
         /**
@@ -158,6 +162,37 @@ public class ProtocGenMarkdown(
          * when provided via the parameter string.
          */
         public val outputType: OutputType,
+        /**
+         * When `true` and [outputType] is [OutputType.PER_FILE], the compiler emits one extra
+         * `.md` per distinct proto `package` declared across the compile-scope files — a
+         * navigation-only index whose body is a bulleted Table of Contents listing every file,
+         * section (`Services` / `Messages` / `Enums`), type, and member in that package, with
+         * each entry hyperlinked to the corresponding heading anchor inside the per-file `.md`s.
+         *
+         * The index filename mirrors [OutputType.PER_PACKAGE]'s rules so the index sits where a
+         * consolidated package document would have sat: `<pkg-as-dir>/package.md` when every
+         * file declaring the package lives at the directory whose path is the package name with
+         * `.` → `/`, otherwise `<fully.qualified.package>.md` at the output root.  Files with no
+         * `package` directive collapse into a single `default.md` index titled `(no package)`.
+         * When an index's computed filename collides with a per-file `.md` (e.g. a proto literally
+         * named `<pkg-as-dir>/package.proto`), the index for that package is skipped and a
+         * warning is logged.
+         *
+         * Cross-file links honor [generateStableAnchors] the same way summary-table type cells
+         * do: path-based ids when on, leaf-text auto-anchors when off.  Member entry paths
+         * mirror the per-file Details headings (`Field Details` / `RPC Details` / `Value
+         * Details`) so the link lands on the same heading the in-file `[...](#…)` expansion
+         * lands on.  Sort order for files, types, RPCs, fields, and enum values matches the
+         * per-file documents (driven by [fileSortMode] / [typeSortMode] / [rpcSortMode] /
+         * [fieldSortMode] / [enumValueSortMode]).
+         *
+         * No-op under [OutputType.PER_PACKAGE] / [OutputType.PER_SESSION]: those modes already
+         * produce one consolidated document per package or session, so an additional index file
+         * would be redundant.
+         *
+         * Default `true`.
+         */
+        public val includePackageIndices: Boolean,
         /**
          * Sort order for the per-file lists of services, messages, and enums under each
          * `## Services` / `## Messages` / `## Enums` section.
@@ -233,6 +268,38 @@ public class ProtocGenMarkdown(
          * when provided via the parameter string.
          */
         public val enumValueSortMode: MemberSortMode,
+        /**
+         * Controls how shortcut-reference syntax inside proto leading comments — e.g.
+         * `[GreetingResponse]`, `[GreetingRequest.name]`, `[GreeterService.SayHello]` — is
+         * handled when rendering each comment block.
+         *
+         *  - [ResolveReferenceLinksMode.NONE] — references are not rewritten; the parsed
+         *    CommonMark AST is appended as-is and unresolved shortcut references survive as
+         *    literal `[name]` text.  Use this when the surrounding documentation system or a
+         *    downstream pipeline takes over reference resolution.
+         *  - [ResolveReferenceLinksMode.WARN] — references resolve against the types, fields,
+         *    enum values, and RPCs in the compile scope and are rewritten into real Markdown
+         *    links to the target's heading anchor.  Unresolved names stay literal.  Key
+         *    collisions during indexing (e.g. top-level `Foo` plus nested `Outer.Foo`) log
+         *    warnings naming the candidates so authors can disambiguate by qualifying.
+         *  - [ResolveReferenceLinksMode.FAIL_ON_INVALID] (default) — same rewrite path as
+         *    [WARN], but the plugin additionally **collects** every comment-level reference
+         *    that doesn't resolve or that resolves through an ambiguous key, and at the end of
+         *    compilation sets `CodeGeneratorResponse.error` so protoc fails the run.
+         *    Reference-driven: collisions that are never used in any comment do not cause a
+         *    failure.
+         *
+         * The resolver honors the comment's own anchor descriptor for bare-name lookups, so
+         * authors can write `[name]` inside a comment on `message User` and have it find
+         * `User.name` without the explicit qualifier.  The structural per-member
+         * `Field Details` / `RPC Details` / `Value Details` headings are emitted regardless
+         * of this option (they exist to anchor cross-references but are useful on their own
+         * as deep-link targets).
+         *
+         * Default [ResolveReferenceLinksMode.FAIL_ON_INVALID].  Must parse as one of the enum
+         * names (case-insensitive) when provided via the parameter string.
+         */
+        public val resolveReferenceLinksMode: ResolveReferenceLinksMode,
     ) {
 
         /** Output-file shape selected by [Options.outputType]. */
@@ -252,17 +319,26 @@ public class ProtocGenMarkdown(
          */
         public enum class MemberSortMode { ALPHABETICAL, ENCOUNTER, NUMBER }
 
+        /**
+         * Behavior selected by [Options.resolveReferenceLinksMode] for the shortcut-reference
+         * resolver that rewrites `[label]` patterns inside proto leading comments.  See the
+         * property's KDoc for the full semantics of each value.
+         */
+        public enum class ResolveReferenceLinksMode { NONE, WARN, FAIL_ON_INVALID }
+
         public class Builder private constructor(parameters: Parameters) {
 
-            public var generateStableAnchors: Boolean = parameters.get<Boolean>("generateStableAnchors") ?: false
+            public var generateStableAnchors: Boolean = parameters.get<Boolean>("generateStableAnchors") ?: true
 
-            public var generateInsertionPoints: Boolean = parameters.get<Boolean>("generateInsertionPoints") ?: false
+            public var generateInsertionPoints: Boolean = parameters.get<Boolean>("generateInsertionPoints") ?: true
 
-            public var minTableOfContentsHeader: Int? = parameters.get<Int>("minTableOfContentsHeader")
+            public var minTableOfContentsHeader: Int? = parameters.get<Int>("minTableOfContentsHeader") ?: 2
 
-            public var maxTableOfContentsHeader: Int? = parameters.get<Int>("maxTableOfContentsHeader")
+            public var maxTableOfContentsHeader: Int? = parameters.get<Int>("maxTableOfContentsHeader") ?: 3
 
             public var outputType: OutputType = parameters.get<OutputType>("outputType") ?: OutputType.PER_FILE
+
+            public var includePackageIndices: Boolean = parameters.get<Boolean>("includePackageIndices") ?: true
 
             public var typeSortMode: SortMode = parameters.get<SortMode>("typeSortMode") ?: SortMode.ALPHABETICAL
 
@@ -273,6 +349,9 @@ public class ProtocGenMarkdown(
             public var fieldSortMode: MemberSortMode = parameters.get<MemberSortMode>("fieldSortMode") ?: MemberSortMode.ENCOUNTER
 
             public var enumValueSortMode: MemberSortMode = parameters.get<MemberSortMode>("enumValueSortMode") ?: MemberSortMode.ENCOUNTER
+
+            public var resolveReferenceLinksMode: ResolveReferenceLinksMode =
+                parameters.get<ResolveReferenceLinksMode>("resolveReferenceLinksMode") ?: ResolveReferenceLinksMode.FAIL_ON_INVALID
 
             public companion object {
                 public fun from(parameters: Parameters): Builder = Builder(parameters)
@@ -285,11 +364,13 @@ public class ProtocGenMarkdown(
                     minTableOfContentsHeader = minTableOfContentsHeader,
                     maxTableOfContentsHeader = maxTableOfContentsHeader,
                     outputType = outputType,
+                    includePackageIndices = includePackageIndices,
                     typeSortMode = typeSortMode,
                     fileSortMode = fileSortMode,
                     rpcSortMode = rpcSortMode,
                     fieldSortMode = fieldSortMode,
                     enumValueSortMode = enumValueSortMode,
+                    resolveReferenceLinksMode = resolveReferenceLinksMode,
                 )
         }
     }

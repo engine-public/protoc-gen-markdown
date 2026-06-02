@@ -1,30 +1,68 @@
 ---
 generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
 protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
-protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null,outputType=PER_FILE,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER
+protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=true,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includePackageIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID
+# @@protoc_insertion_point(frontmatter)
 ---
 
-# engine/protoc/markdown/example/hello/hello.proto
+# <a id="engine_protoc_markdown_example_hello_hello_proto"></a>engine/protoc/markdown/example/hello/hello.proto
 
 ___
 
-## Services
+<details>
+<summary>Table of contents</summary>
 
-### GreeterService
+- [Services](#engine_protoc_markdown_example_hello_hello_proto-Services)
+  
+  - [GreeterService](#engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService)
+
+- [Messages](#engine_protoc_markdown_example_hello_hello_proto-Messages)
+  
+  - [GreetingRequest](#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest)
+  
+  - [GreetingResponse](#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse)
+
+- [Enums](#engine_protoc_markdown_example_hello_hello_proto-Enums)
+  
+  - [GreetingType](#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType)
+
+</details>
+
+<!-- @@protoc_insertion_point(file_header_scope:engine/protoc/markdown/example/hello/hello.proto) -->
+
+<!-- @@protoc_insertion_point(file_scope:engine/protoc/markdown/example/hello/hello.proto) -->
+
+## <a id="engine_protoc_markdown_example_hello_hello_proto-Services"></a>Services
+
+<!-- @@protoc_insertion_point(services_section) -->
+
+### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService"></a>GreeterService
+
+<!-- @@protoc_insertion_point(service_header_scope:engine.protoc.markdown.example.hello.GreeterService) -->
 
 A service to say hello
 
-#### RPC Summary
+<!-- @@protoc_insertion_point(service_scope:engine.protoc.markdown.example.hello.GreeterService) -->
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Summary"></a>RPC Summary
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|SayHello|[GreetingRequest](hello.md#greetingrequest)|[GreetingResponse](hello.md#greetingresponse)|Say hello to my little friend|
+|SayHello|[GreetingRequest](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest)|[GreetingResponse](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse)|Say hello to my little friend|
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details"></a>RPC Details
+
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details-SayHello"></a>SayHello
 
 ___
 
-## Messages
+## <a id="engine_protoc_markdown_example_hello_hello_proto-Messages"></a>Messages
 
-### GreetingRequest
+<!-- @@protoc_insertion_point(messages_section) -->
+
+### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest"></a>GreetingRequest
+
+<!-- @@protoc_insertion_point(message_header_scope:engine.protoc.markdown.example.hello.GreetingRequest) -->
 
 Minimal proto: one message and one service.
 
@@ -33,16 +71,18 @@ Runs the compiler at its defaults so the generated fixtures act as a baseline fo
  * a bulleted list
  * with at least two items
 
-#### Field Summary
+<!-- @@protoc_insertion_point(message_scope:engine.protoc.markdown.example.hello.GreetingRequest) -->
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Summary"></a>Field Summary
 
 |Name|Type|Description|
 |---|---|---|
-|name|string|A comment block for the text field. [...](#name)|
-|type|[GreetingType](hello.md#greetingtype)|Specify the character of the greeting you will receive|
+|name|string|A comment block for the text field. [...](#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-name)|
+|type|[GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType)|Specify the character of the greeting you will receive.|
 
-#### Field Details
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details"></a>Field Details
 
-##### name
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-name"></a>name
 
 A comment block for the text field.
 
@@ -57,26 +97,52 @@ It includes two paragraphs.
  * bulleted
  * list
 
-### GreetingResponse
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-type"></a>type
 
-#### Field Summary
+### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse"></a>GreetingResponse
+
+<!-- @@protoc_insertion_point(message_header_scope:engine.protoc.markdown.example.hello.GreetingResponse) -->
+
+<!-- @@protoc_insertion_point(message_scope:engine.protoc.markdown.example.hello.GreetingResponse) -->
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse-Field_Summary"></a>Field Summary
 
 |Name|Type|Description|
 |---|---|---|
 |greeting|string||
 
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse-Field_Details"></a>Field Details
+
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse-Field_Details-greeting"></a>greeting
+
 ___
 
-## Enums
+## <a id="engine_protoc_markdown_example_hello_hello_proto-Enums"></a>Enums
 
-### GreetingType
+<!-- @@protoc_insertion_point(enums_section) -->
 
-Specifies how the customer will be greeted
+### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType"></a>GreetingType
 
-#### Value Summary
+<!-- @@protoc_insertion_point(enum_header_scope:engine.protoc.markdown.example.hello.GreetingType) -->
+
+Specifies how the customer will be greeted in the [GreetingResponse](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse).
+
+<!-- @@protoc_insertion_point(enum_scope:engine.protoc.markdown.example.hello.GreetingType) -->
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Summary"></a>Value Summary
 
 |Name|Number|Description|
 |---|---|---|
-|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected|
-|GREETING\_TYPE\_INFORMAL|1|A greeting appropriate for formal settings|
-|GREETING\_TYPE\_FORMAT|2|A greeting suited for an old friend|
+|GREETING\_TYPE\_UNSPECIFIED|0|The greeting will be randomly selected from the available \[GreetingType\] values.|
+|GREETING\_TYPE\_INFORMAL|1|A greeting appropriate for formal settings.|
+|GREETING\_TYPE\_FORMAT|2|A greeting suited for an old friend.|
+
+#### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details"></a>Value Details
+
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_UNSPECIFIED"></a>GREETING\_TYPE\_UNSPECIFIED
+
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_INFORMAL"></a>GREETING\_TYPE\_INFORMAL
+
+##### <a id="engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_FORMAT"></a>GREETING\_TYPE\_FORMAT
+
+<!-- @@protoc_insertion_point(file_footer) -->

@@ -28,9 +28,9 @@ message GreetingRequest {
     GreetingType type = 2;
 }
 
-// Specifies how the customer will be greeted.
+// Specifies how the customer will be greeted in the [GreetingResponse].
 enum GreetingType {
-    // The greeting will be randomly selected.
+    // The greeting will be randomly selected from the available [GreetingType] values.
     GREETING_TYPE_UNSPECIFIED = 0;
     // A greeting appropriate for formal settings.
     GREETING_TYPE_INFORMAL = 1;
