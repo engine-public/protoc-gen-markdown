@@ -1,3 +1,9 @@
+---
+generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
+protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
+protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null
+---
+
 # engine/protoc/markdown/example/hello/hello.proto
 
 ___
@@ -12,7 +18,7 @@ A service to say hello
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|SayHello|[GreetingRequest](hello.md)|[GreetingResponse](hello.md)|Say hello to my little friend|
+|SayHello|[GreetingRequest](hello.md#greetingrequest)|[GreetingResponse](hello.md#greetingresponse)|Say hello to my little friend|
 
 ## Messages
 
@@ -30,7 +36,7 @@ Runs the compiler at its defaults so the generated fixtures act as a baseline fo
 |Name|Type|Description|
 |---|---|---|
 |name|string|A comment block for the text field. [...](#name)|
-|type|[GreetingType](hello.md)|Specify the character of the greeting you will receive|
+|type|[GreetingType](hello.md#greetingtype)|Specify the character of the greeting you will receive|
 
 #### Field Details
 

@@ -1,6 +1,7 @@
 package com.engine.protoc.markdown.compile
 
 import com.engine.protoc.markdown.ProtocGenMarkdown
+import com.engine.protoc.markdown.Version
 import com.engine.protoc.util.Locatable
 import com.engine.protoc.util.compiler.CodeGeneratorRequestWrapper
 import com.engine.protoc.util.compiler.CodeGeneratorResponseWrapper
@@ -15,6 +16,8 @@ import com.engine.protoc.util.service.ServiceDescriptorProtoWrapper
 import com.google.protobuf.DescriptorProtos.FieldDescriptorProto.Label
 import com.google.protobuf.DescriptorProtos.FieldDescriptorProto.Type
 import com.google.protobuf.compiler.PluginProtos
+import org.commonmark.ext.front.matter.YamlFrontMatterBlock
+import org.commonmark.ext.front.matter.YamlFrontMatterNode
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableCell
@@ -35,12 +38,25 @@ import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
 import org.commonmark.node.ThematicBreak
 import org.commonmark.parser.Parser
+import org.commonmark.renderer.NodeRenderer
+import org.commonmark.renderer.markdown.MarkdownNodeRendererContext
+import org.commonmark.renderer.markdown.MarkdownNodeRendererFactory
 import org.commonmark.renderer.markdown.MarkdownRenderer
+import java.time.Clock
+import java.time.format.DateTimeFormatter
 
 /**
  * Per compile invocation, emits one `.md` file per entry in `request.filesToGenerate`.  Each
  * document is an outline of the proto:
  *
+ *  - A YAML frontmatter block at the very top — emitted unconditionally — modeled as a typed
+ *    [YamlFrontMatterBlock] from `commonmark-ext-yaml-front-matter` rather than an [HtmlBlock]
+ *    masquerading as YAML.  Carries three flat keys: `generated-by` (the GitHub release-tag URL
+ *    encoding both plugin identity and version), `protoc-gen-markdown-generated-on` (ISO-8601
+ *    instant from the injected [Clock]), and `protoc-gen-markdown-options` (every
+ *    [ProtocGenMarkdown.Options] value in effect for this compile snapshotted as a
+ *    comma-separated `key=value` string, defaults included).  See [frontmatterBlock] and
+ *    [FrontmatterRenderer].
  *  - A `# <path>` heading carrying the proto's full relative path as protoc reports it.
  *  - A horizontal rule under the title, emitted whenever the file declares at least one service,
  *    message, or enum — independent of the Table of Contents.
@@ -100,10 +116,21 @@ import org.commonmark.renderer.markdown.MarkdownRenderer
 internal class Compiler(
     private val request: CodeGeneratorRequestWrapper,
     private val options: ProtocGenMarkdown.Options,
+    private val clock: Clock,
 ) {
 
     private val tablesExtension = TablesExtension.create()
-    private val renderer: MarkdownRenderer = MarkdownRenderer.builder().extensions(listOf(tablesExtension)).build()
+    private val renderer: MarkdownRenderer =
+        MarkdownRenderer.builder()
+            .extensions(listOf(tablesExtension))
+            .nodeRendererFactory(
+                object : MarkdownNodeRendererFactory {
+                    override fun create(context: MarkdownNodeRendererContext): NodeRenderer = FrontmatterRenderer(context, options.generateInsertionPoints)
+
+                    override fun getSpecialCharacters(): Set<Char> = emptySet()
+                },
+            )
+            .build()
     private val parser: Parser = Parser.builder().extensions(listOf(tablesExtension)).build()
     private val log: System.Logger = System.getLogger("com.engine.protoc.markdown")
 
@@ -132,21 +159,36 @@ internal class Compiler(
         request.protoFiles.filter { it.name in toGenerate }
     }
 
+    private enum class TypeKind { MESSAGE, ENUM }
+
     /**
-     * Fully-qualified type name → file that declares it, across every file in the compile scope.
-     * Used to resolve TYPE_MESSAGE / TYPE_ENUM field references to a relative link target.
-     * Map-entry synthetic messages are not indexed (they have no user-facing `### ` heading and
-     * fields that reference them render as plain text leaf names).
+     * What a TYPE_MESSAGE / TYPE_ENUM cross-reference resolves to: the file that declares the
+     * type, the kind (so we know whether to anchor under the `Messages` or `Enums` L2 section),
+     * and the dotted ancestor-prefixed local name within that file (e.g. `Outer.Inner`) — the
+     * exact string used as the type's L3 heading text and therefore the basis of its anchor id.
      */
-    private val typeIndex: Map<String, FileDescriptorProtoWrapper> by lazy {
-        val map = mutableMapOf<String, FileDescriptorProtoWrapper>()
+    private data class TypeRef(
+        val file: FileDescriptorProtoWrapper,
+        val kind: TypeKind,
+        val localName: String,
+    )
+
+    /**
+     * Fully-qualified type name → resolution metadata, across every file in the compile scope.
+     * Used to turn TYPE_MESSAGE / TYPE_ENUM field references into intra/inter-file links that
+     * land on the correct heading anchor (see [appendTypeReference]).  Map-entry synthetic
+     * messages are not indexed (they have no user-facing `### ` heading and fields that
+     * reference them render as plain text leaf names).
+     */
+    private val typeIndex: Map<String, TypeRef> by lazy {
+        val map = mutableMapOf<String, TypeRef>()
         for (file in scopeFiles) {
             val pkg = file.`package`?.value
-            val prefix = if (pkg.isNullOrEmpty()) "" else "$pkg."
-            for (m in file.messageTypes) indexMessage(m, prefix, file, map)
+            val pkgPrefix = if (pkg.isNullOrEmpty()) "" else "$pkg."
+            for (m in file.messageTypes) indexMessage(m, pkgPrefix, "", file, map)
             for (e in file.enumTypes) {
                 val ename = e.name?.value ?: continue
-                map["$prefix$ename"] = file
+                map["$pkgPrefix$ename"] = TypeRef(file, TypeKind.ENUM, ename)
             }
         }
         map
@@ -154,19 +196,21 @@ internal class Compiler(
 
     private fun indexMessage(
         msg: DescriptorProtoWrapper,
-        prefix: String,
+        pkgPrefix: String,
+        localPrefix: String,
         file: FileDescriptorProtoWrapper,
-        map: MutableMap<String, FileDescriptorProtoWrapper>,
+        map: MutableMap<String, TypeRef>,
     ) {
         if (msg.options?.mapEntry?.value == true) return
         val name = msg.name?.value ?: return
-        val fqn = "$prefix$name"
-        map[fqn] = file
-        val nestedPrefix = "$fqn."
-        for (n in msg.nestedTypes) indexMessage(n, nestedPrefix, file, map)
+        val localName = "$localPrefix$name"
+        map["$pkgPrefix$localName"] = TypeRef(file, TypeKind.MESSAGE, localName)
+        val childLocal = "$localName."
+        for (n in msg.nestedTypes) indexMessage(n, pkgPrefix, childLocal, file, map)
         for (e in msg.enumTypes) {
             val ename = e.name?.value ?: continue
-            map["$nestedPrefix$ename"] = file
+            val enumLocal = "$childLocal$ename"
+            map["$pkgPrefix$enumLocal"] = TypeRef(file, TypeKind.ENUM, enumLocal)
         }
     }
 
@@ -179,7 +223,11 @@ internal class Compiler(
         val currentMd = outlineFilename(file)
         val title = titleOf(file)
         val titlePath = listOf(title)
+        val pkg = file.`package`?.value.orEmpty()
+        val fqn: (String) -> String = { name -> if (pkg.isEmpty()) name else "$pkg.$name" }
+        doc.appendChild(frontmatterBlock())
         doc.appendChild(headingOf(HEADING_TOP, title, titlePath))
+        appendInsertionPoint(doc, "file_header")
 
         val services = file.services
         val messages = collectMessages(file)
@@ -190,11 +238,14 @@ internal class Compiler(
         if (services.isNotEmpty()) {
             val sectionPath = titlePath + "Services"
             doc.appendChild(headingOf(HEADING_SECTION, "Services", sectionPath))
+            appendInsertionPoint(doc, "services_section")
             for (s in services) {
                 val sname = s.name?.value ?: "(unnamed)"
                 val svcPath = sectionPath + sname
                 doc.appendChild(headingOf(HEADING_TYPE, sname, svcPath))
+                appendInsertionPoint(doc, "service_header_scope:${fqn(sname)}")
                 appendLeadingComment(doc, sci, s)
+                appendInsertionPoint(doc, "service_scope:${fqn(sname)}")
                 appendRpcTable(doc, s, sci, currentMd, svcPath)
             }
         }
@@ -202,10 +253,13 @@ internal class Compiler(
         if (messages.isNotEmpty()) {
             val sectionPath = titlePath + "Messages"
             doc.appendChild(headingOf(HEADING_SECTION, "Messages", sectionPath))
+            appendInsertionPoint(doc, "messages_section")
             for ((name, msg) in messages) {
                 val msgPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, msgPath))
+                appendInsertionPoint(doc, "message_header_scope:${fqn(name)}")
                 appendLeadingComment(doc, sci, msg)
+                appendInsertionPoint(doc, "message_scope:${fqn(name)}")
                 appendFieldsTable(doc, msg, sci, currentMd, msgPath)
             }
         }
@@ -213,15 +267,20 @@ internal class Compiler(
         if (enums.isNotEmpty()) {
             val sectionPath = titlePath + "Enums"
             doc.appendChild(headingOf(HEADING_SECTION, "Enums", sectionPath))
+            appendInsertionPoint(doc, "enums_section")
             for ((name, enum) in enums) {
                 val enumPath = sectionPath + name
                 doc.appendChild(headingOf(HEADING_TYPE, name, enumPath))
+                appendInsertionPoint(doc, "enum_header_scope:${fqn(name)}")
                 appendLeadingComment(doc, sci, enum)
+                appendInsertionPoint(doc, "enum_scope:${fqn(name)}")
                 appendValuesTable(doc, enum, sci, enumPath)
             }
         }
 
         if (thematicBreak != null) renderTableOfContents(thematicBreak)
+
+        appendInsertionPoint(doc, "file_footer")
 
         return doc
     }
@@ -347,6 +406,119 @@ internal class Compiler(
         val node = HtmlBlock()
         node.literal = literal
         return node
+    }
+
+    /**
+     * Append a `<!-- @@protoc_insertion_point(NAME) -->` HTML-comment marker so a sibling protoc
+     * plugin can splice content in immediately before the marker line via the standard
+     * `CodeGeneratorResponse.File.insertion_point` mechanism.  Gated by
+     * [ProtocGenMarkdown.Options.generateInsertionPoints]; a no-op when the option is off.
+     * Emitted as an [HtmlBlock] so [MarkdownRenderer] keeps the marker on its own line — protoc's
+     * insertion-point parser is line-oriented.
+     */
+    private fun appendInsertionPoint(
+        doc: Document,
+        name: String,
+    ) {
+        if (!options.generateInsertionPoints) return
+        doc.appendChild(htmlBlock("<!-- @@protoc_insertion_point($name) -->"))
+    }
+
+    /**
+     * Build the YAML frontmatter block emitted at the top of every generated document, modeled as
+     * a [YamlFrontMatterBlock] from `commonmark-ext-yaml-front-matter` so the AST carries a typed
+     * front-matter node rather than an [HtmlBlock] masquerading as YAML.  The block holds three
+     * flat [YamlFrontMatterNode] children:
+     *
+     *  - `generated-by` — the GitHub release-tag URL.  Carries plugin identity (the path) and
+     *    version (the tag) in a single value, replacing the older `generator`/`version`/`release`
+     *    triple.
+     *  - `protoc-gen-markdown-generated-on` — the generation instant (ISO-8601 from [clock]).
+     *  - `protoc-gen-markdown-options` — every [ProtocGenMarkdown.Options] property snapshotted
+     *    into a comma-separated `key=value` string in declaration order, including options left
+     *    at their defaults, so the line reads like a `--markdown_out=` parameter string.
+     *
+     * The two plugin-namespaced keys carry the `protoc-gen-markdown-` prefix so they don't
+     * collide with any top-level keys a sibling plugin might splice in at the `frontmatter`
+     * insertion point (see [ProtocGenMarkdown.Options.generateInsertionPoints]).
+     *
+     * Actual rendering of the YAML — the `---` fences, the `key: value` lines, the optional
+     * `# @@protoc_insertion_point(frontmatter)` marker before the closing fence — lives in
+     * [FrontmatterRenderer], registered on [renderer] at the [MarkdownRenderer.Builder].
+     */
+    private fun frontmatterBlock(): YamlFrontMatterBlock {
+        val version = Version.value
+        val block = YamlFrontMatterBlock()
+        block.appendChild(YamlFrontMatterNode("generated-by", listOf("https://github.com/hotelengine/protoc-gen-markdown/releases/tag/$version")))
+        block.appendChild(YamlFrontMatterNode("protoc-gen-markdown-generated-on", listOf(DateTimeFormatter.ISO_INSTANT.format(clock.instant()))))
+        block.appendChild(YamlFrontMatterNode("protoc-gen-markdown-options", listOf(formatOptions())))
+        return block
+    }
+
+    /**
+     * Render every [ProtocGenMarkdown.Options] property as `name=value`, joined with `,`, in
+     * declaration order.  Booleans render as `true`/`false`; nullable ints render as the integer
+     * or the literal `null`.  Matches the formatting accepted by the `--markdown_out=` parameter
+     * parser so the resulting line is a round-trippable snapshot of the compile invocation.
+     */
+    private fun formatOptions(): String =
+        listOf(
+            "generateStableAnchors" to options.generateStableAnchors.toString(),
+            "generateInsertionPoints" to options.generateInsertionPoints.toString(),
+            "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null"),
+            "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null"),
+        ).joinToString(",") { (k, v) -> "$k=$v" }
+
+    /**
+     * `NodeRenderer` for [YamlFrontMatterBlock] and [YamlFrontMatterNode].  The
+     * `commonmark-ext-yaml-front-matter` extension is parser-only — neither [MarkdownRenderer]
+     * nor `HtmlRenderer` ships built-in rendering for its node types — so we register this
+     * factory on the [MarkdownRenderer.Builder] to teach the renderer how to emit them.
+     *
+     * Layout:
+     *  - For a [YamlFrontMatterBlock]: write the opening `---` fence, dispatch each
+     *    [YamlFrontMatterNode] child through [context], optionally write the
+     *    `# @@protoc_insertion_point(frontmatter)` marker (when [emitInsertionPoint] is true) so
+     *    sibling protoc plugins can splice extra top-level YAML keys, then the closing `---`
+     *    fence followed by a `block()` separator so a blank line lands between the frontmatter
+     *    and the H1 title that follows.
+     *  - For a [YamlFrontMatterNode]: write `<key>: <values joined with ", ">` and a newline.
+     *    The plugin always passes single-element value lists, so the join is a no-op here, but
+     *    multi-value support is preserved for fidelity with the node model.
+     */
+    private class FrontmatterRenderer(
+        private val context: MarkdownNodeRendererContext,
+        private val emitInsertionPoint: Boolean,
+    ) : NodeRenderer {
+        override fun getNodeTypes(): Set<Class<out Node>> = setOf(YamlFrontMatterBlock::class.java, YamlFrontMatterNode::class.java)
+
+        override fun render(node: Node) {
+            val w = context.writer
+            when (node) {
+                is YamlFrontMatterBlock -> {
+                    w.raw("---")
+                    w.line()
+                    var child = node.firstChild
+                    while (child != null) {
+                        context.render(child)
+                        child = child.next
+                    }
+                    if (emitInsertionPoint) {
+                        w.raw("# @@protoc_insertion_point(frontmatter)")
+                        w.line()
+                    }
+                    w.raw("---")
+                    w.block()
+                }
+
+                is YamlFrontMatterNode -> {
+                    w.raw(node.key)
+                    w.raw(": ")
+                    w.raw(node.values.joinToString(", "))
+                    w.line()
+                }
+            }
+        }
     }
 
     /** Full relative path as protoc sees it — e.g. `foo/bar/baz.proto`. */
@@ -491,8 +663,14 @@ internal class Compiler(
     /**
      * Append a leaf-name reference for a fully-qualified protobuf type [fqn] (e.g.
      * `.engine.protoc.markdown.example.hello.Greeting`) to [cell].  If the type's declaring file
-     * is in the compile scope, emits a [Link] to that file's `.md` (relative to [currentMd]);
-     * otherwise plain text.  `null`/empty FQN renders as `?`.
+     * is in the compile scope, emits a [Link] to that file's `.md` (relative to [currentMd])
+     * with a `#<anchor>` fragment targeting the type's L3 heading; otherwise plain text.
+     * `null`/empty FQN renders as `?`.
+     *
+     * The anchor scheme honors [ProtocGenMarkdown.Options.generateStableAnchors]: when on, the
+     * path-based id from [pathAnchor] (`<file-slug>-<section>-<localName>`) so same-named types
+     * under different sections / files don't collide; when off, the GFM-slug of the local dotted
+     * name from [slugify], matching the renderer's heading-text auto-anchor.
      */
     private fun appendTypeReference(
         cell: TableCell,
@@ -507,7 +685,14 @@ internal class Compiler(
         val leaf = cleaned.substringAfterLast('.').ifEmpty { "?" }
         val target = typeIndex[cleaned]
         if (target != null) {
-            val link = Link(relativeLink(currentMd, outlineFilename(target)), null)
+            val section = if (target.kind == TypeKind.MESSAGE) "Messages" else "Enums"
+            val anchor =
+                if (options.generateStableAnchors) {
+                    pathAnchor(listOf(titleOf(target.file), section, target.localName))
+                } else {
+                    slugify(target.localName)
+                }
+            val link = Link(relativeLink(currentMd, outlineFilename(target.file)) + "#" + anchor, null)
             link.appendChild(Text(leaf))
             cell.appendChild(link)
         } else {

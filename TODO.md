@@ -3,6 +3,7 @@
   - [ ] file per compile
   - [ ] file per package
   - [ ] file per input
-- [ ] protoc_insertion_points
+- [x] protoc_insertion_points
+  - [x] need point in front matter
 - [x] option for ToC visibility
 - [x] option for ToC depth h2-h3 default

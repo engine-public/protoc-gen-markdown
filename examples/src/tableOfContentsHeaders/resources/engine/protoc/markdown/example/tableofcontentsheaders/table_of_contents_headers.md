@@ -1,3 +1,9 @@
+---
+generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
+protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
+protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints=false,minTableOfContentsHeader=2,maxTableOfContentsHeader=3
+---
+
 # engine/protoc/markdown/example/tableofcontentsheaders/table\_of\_contents\_headers.proto
 
 ___
@@ -27,7 +33,7 @@ ___
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|Send|[Payload](table_of_contents_headers.md)|[Payload](table_of_contents_headers.md)||
+|Send|[Payload](table_of_contents_headers.md#payload)|[Payload](table_of_contents_headers.md#payload)||
 
 ## Messages
 
