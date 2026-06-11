@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.protobuf.java)
     implementation(libs.commonmark)
     implementation(libs.commonmark.ext.gfm.tables)
+    implementation(libs.commonmark.ext.yaml.front.matter)
 
     // GraalVM hosted API used by native-image Feature classes (none yet, but
     // wired so a future Feature compiles without re-plumbing). Compile-only —

@@ -19,6 +19,7 @@ val suiteRecorderOptions =
     mapOf(
         "hello" to emptyList<String>(),
         "generateStableAnchors" to listOf("generateStableAnchors=true"),
+        "generateInsertionPoints" to listOf("generateInsertionPoints=true"),
         "tableOfContentsHeaders" to listOf("minTableOfContentsHeader=2", "maxTableOfContentsHeader=3"),
     )
 

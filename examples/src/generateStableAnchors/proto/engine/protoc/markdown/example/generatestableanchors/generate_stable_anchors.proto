@@ -14,6 +14,7 @@ message First {
     //
     // Multi-paragraph so a Field Details expansion is forced.
     string text = 1;
+    Second second = 2;
 }
 
 message Second {

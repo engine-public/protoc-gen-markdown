@@ -1,3 +1,9 @@
+---
+generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
+protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
+protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null
+---
+
 # <a id="engine_protoc_markdown_example_generatestableanchors_generate_stable_anchors_proto"></a>engine/protoc/markdown/example/generatestableanchors/generate\_stable\_anchors.proto
 
 ___
@@ -16,6 +22,7 @@ with the default false they would collide on the renderer's `#text` slug.
 |Name|Type|Description|
 |---|---|---|
 |text|string|First message's text field. [...](#engine_protoc_markdown_example_generatestableanchors_generate_stable_anchors_proto-Messages-First-Field_Details-text)|
+|second|[Second](generate_stable_anchors.md#engine_protoc_markdown_example_generatestableanchors_generate_stable_anchors_proto-Messages-Second)||
 
 #### <a id="engine_protoc_markdown_example_generatestableanchors_generate_stable_anchors_proto-Messages-First-Field_Details"></a>Field Details
 

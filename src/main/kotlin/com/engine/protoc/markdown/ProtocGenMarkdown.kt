@@ -7,10 +7,12 @@ import com.engine.protoc.util.extensions.wrap
 import com.google.protobuf.ExtensionRegistry
 import com.google.protobuf.compiler.PluginProtos
 import java.io.InputStream
+import java.time.Clock
 
 public class ProtocGenMarkdown(
     private val request: CodeGeneratorRequestWrapper,
     private val options: Options,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
 
     /**
@@ -37,6 +39,45 @@ public class ProtocGenMarkdown(
          * when collisions matter; leave it off when they don't.
          */
         public val generateStableAnchors: Boolean,
+        /**
+         * When true, the renderer emits `<!-- @@protoc_insertion_point(NAME) -->` HTML-comment
+         * markers at a fixed catalog of scopes so sibling protoc plugins can splice content into
+         * the generated Markdown via the standard protoc plugin insertion-point mechanism (a
+         * `CodeGeneratorResponse.File` whose `insertion_point` matches `NAME` and whose `content`
+         * is inserted immediately before the marker line).  The markers render as HTML comments,
+         * so they are invisible in the rendered document.
+         *
+         * The catalog, in document order:
+         *  - `frontmatter` — the last line inside the YAML frontmatter block, before the closing
+         *    `---` fence.  Wrapped as a `#`-prefixed YAML comment rather than an HTML comment so
+         *    YAML parsers ignore it; the marker line still matches protoc's insertion-point
+         *    parser.  Injected content becomes additional top-level YAML keys; the plugin's own
+         *    keys carry a `protoc-gen-markdown-` namespace prefix to avoid collisions.
+         *  - `file_header` — directly after the L1 `# <path>` title.
+         *  - `services_section` — directly after `## Services`, when the section is emitted.
+         *  - `service_header_scope:<fqsn>` — after each `### ServiceName`, before its leading
+         *    proto comment.
+         *  - `service_scope:<fqsn>` — after the leading comment, before `#### RPC Summary`.
+         *  - `messages_section` — directly after `## Messages`, when the section is emitted.
+         *  - `message_header_scope:<fqmn>` — after each `### MessageName`, before its leading
+         *    proto comment.
+         *  - `message_scope:<fqmn>` — after the leading comment, before `#### Field Summary`.
+         *  - `enums_section` — directly after `## Enums`, when the section is emitted.
+         *  - `enum_header_scope:<fqen>` — after each `### EnumName`, before its leading proto
+         *    comment.
+         *  - `enum_scope:<fqen>` — after the leading comment, before `#### Value Summary`.
+         *  - `file_footer` — at the very end of the document.
+         *
+         * Type names are fully qualified: the proto file's `package` joined with the dotted
+         * ancestor-prefixed type name (so `Outer.Inner` in `package foo.bar` becomes
+         * `foo.bar.Outer.Inner`).  When the file has no `package` directive the bare dotted name
+         * is used (no leading dot).
+         *
+         * Default `false` — the markers are not emitted at all, and the output is byte-identical
+         * to a build with this option absent (apart from this option line in the YAML
+         * frontmatter).
+         */
+        public val generateInsertionPoints: Boolean,
         /**
          * Lower bound (inclusive) of the heading levels that appear in the Table of Contents.
          * Heading levels are 1 (`#`) through 5 (`#####`); the file path is L1, the section names
@@ -72,6 +113,8 @@ public class ProtocGenMarkdown(
 
             public var generateStableAnchors: Boolean = parameters.get<Boolean>("generateStableAnchors") ?: false
 
+            public var generateInsertionPoints: Boolean = parameters.get<Boolean>("generateInsertionPoints") ?: false
+
             public var minTableOfContentsHeader: Int? = parameters.get<Int>("minTableOfContentsHeader")
 
             public var maxTableOfContentsHeader: Int? = parameters.get<Int>("maxTableOfContentsHeader")
@@ -83,6 +126,7 @@ public class ProtocGenMarkdown(
             public fun build(): Options =
                 Options(
                     generateStableAnchors = generateStableAnchors,
+                    generateInsertionPoints = generateInsertionPoints,
                     minTableOfContentsHeader = minTableOfContentsHeader,
                     maxTableOfContentsHeader = maxTableOfContentsHeader,
                 )
@@ -93,15 +137,17 @@ public class ProtocGenMarkdown(
         public fun from(
             input: InputStream,
             registry: ExtensionRegistry = ExtensionRegistry.newInstance(),
+            clock: Clock = Clock.systemUTC(),
             block: Options.Builder.() -> Unit = {},
         ): ProtocGenMarkdown {
             val cgreq = PluginProtos.CodeGeneratorRequest.parseFrom(input, registry).wrap()
             return ProtocGenMarkdown(
                 cgreq,
                 Options.Builder.from(cgreq.parameters).apply(block).build(),
+                clock,
             )
         }
     }
 
-    public fun compile(): PluginProtos.CodeGeneratorResponse = Compiler(request, options).compile()
+    public fun compile(): PluginProtos.CodeGeneratorResponse = Compiler(request, options, clock).compile()
 }
