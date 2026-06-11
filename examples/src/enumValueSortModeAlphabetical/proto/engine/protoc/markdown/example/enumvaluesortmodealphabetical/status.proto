@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.enumvaluesortmodealphabetical;
+
+option java_package = "com.engine.protoc.markdown.example.enumvaluesortmodealphabetical";
+option java_multiple_files = true;
+
+// Enum values whose declaration order, alphabetical order, and numeric order are
+// pairwise distinct.  This suite pins enumValueSortMode=ALPHABETICAL so the fixture
+// shows the alphabetical-by-name ordering distinct from the ENCOUNTER default in the
+// `hello` baseline and the numeric ordering in the `enumValueSortModeNumber` sibling.
+enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_BETA = 10;
+    STATUS_ALPHA = 30;
+    STATUS_ZEBRA = 20;
+}

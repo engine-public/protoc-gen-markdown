@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.outputtypepersession.beta;
+
+import "engine/protoc/markdown/example/outputtypepersession/alpha/alpha.proto";
+
+option java_package = "com.engine.protoc.markdown.example.outputtypepersession.beta";
+option java_multiple_files = true;
+
+// The "beta" half of the per-session example.
+//
+// References `Alpha` across packages; in PER_SESSION mode both files end up in the same
+// consolidated `.md`, so the type-cell link collapses to a bare `#anchor` self-link.
+
+message Beta {
+    engine.protoc.markdown.example.outputtypepersession.alpha.Alpha origin = 1;
+    string note = 2;
+}

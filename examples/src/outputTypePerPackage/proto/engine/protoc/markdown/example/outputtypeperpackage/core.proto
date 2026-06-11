@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.outputtypeperpackage;
+
+option java_package = "com.engine.protoc.markdown.example.outputtypeperpackage";
+option java_multiple_files = true;
+
+// Core domain definitions for the package.
+//
+// Lives in the same proto package as `events.proto`, exercising the PER_PACKAGE consolidation
+// path: both files end up under one `package.md`, both directories share the package's
+// dotted-name layout so the namespaced-directory rule applies, and cross-file type
+// references between this file and `events.proto` collapse to bare `#anchor` self-links.
+
+// A user of the system.
+message User {
+    // Stable identifier.
+    string id = 1;
+
+    // Display name.
+    string name = 2;
+
+    // The user's role in the system.
+    UserRole role = 3;
+}
+
+// The role a user is assigned.
+enum UserRole {
+    USER_ROLE_UNSPECIFIED = 0;
+    USER_ROLE_MEMBER = 1;
+    USER_ROLE_ADMIN = 2;
+}
+
+// Read and mutate user records.
+service UserService {
+    // Look up a user by id.
+    rpc GetUser(GetUserRequest) returns (User);
+}
+
+message GetUserRequest {
+    string id = 1;
+}

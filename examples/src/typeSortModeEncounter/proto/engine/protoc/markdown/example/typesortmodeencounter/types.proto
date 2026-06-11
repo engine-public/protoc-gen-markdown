@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.typesortmodeencounter;
+
+option java_package = "com.engine.protoc.markdown.example.typesortmodeencounter";
+option java_multiple_files = true;
+
+// Top-level types declared out of alphabetical order so the contrast against the
+// default ALPHABETICAL typeSortMode is visible in this suite's fixture.
+
+service ZebraService {
+    rpc Stride(ZebraSignal) returns (ZebraSignal);
+}
+
+service ApeService {
+    rpc Wave(ApeSignal) returns (ApeSignal);
+}
+
+// Contains a nested message and a nested enum so the alphabetical (flatten-by-full-dotted-name)
+// traversal can be contrasted with the depth-first declaration order recorded here.
+message ZebraSignal {
+    string text = 1;
+
+    message Stripe {
+        int32 width = 1;
+    }
+
+    enum Pattern {
+        ZEBRA_PATTERN_UNSPECIFIED = 0;
+    }
+}
+
+message ApeSignal {
+    string text = 1;
+}
+
+enum ZebraSpecies {
+    ZEBRA_SPECIES_UNSPECIFIED = 0;
+}
+
+enum ApeSpecies {
+    APE_SPECIES_UNSPECIFIED = 0;
+}

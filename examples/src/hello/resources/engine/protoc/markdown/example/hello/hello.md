@@ -1,7 +1,7 @@
 ---
 generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
 protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
-protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null
+protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null,outputType=PER_FILE,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER
 ---
 
 # engine/protoc/markdown/example/hello/hello.proto
@@ -19,6 +19,8 @@ A service to say hello
 |Name|Input|Output|Description|
 |---|---|---|---|
 |SayHello|[GreetingRequest](hello.md#greetingrequest)|[GreetingResponse](hello.md#greetingresponse)|Say hello to my little friend|
+
+___
 
 ## Messages
 
@@ -62,6 +64,8 @@ It includes two paragraphs.
 |Name|Type|Description|
 |---|---|---|
 |greeting|string||
+
+___
 
 ## Enums
 

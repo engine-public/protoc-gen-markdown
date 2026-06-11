@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.outputtypepersession.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.outputtypepersession.alpha";
+option java_multiple_files = true;
+
+// The "alpha" half of the per-session example.
+//
+// Files in two distinct packages share the prefix
+// `engine.protoc.markdown.example.outputtypepersession`, so PER_SESSION consolidates them
+// into a single `engine.protoc.markdown.example.outputtypepersession.md` at the output root
+// and uses that common prefix as the document's H1.
+
+// Shared up-front definitions referenced by both packages.
+message Alpha {
+    string label = 1;
+}

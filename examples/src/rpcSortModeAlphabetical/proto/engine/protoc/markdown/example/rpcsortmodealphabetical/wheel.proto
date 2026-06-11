@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.rpcsortmodealphabetical;
+
+option java_package = "com.engine.protoc.markdown.example.rpcsortmodealphabetical";
+option java_multiple_files = true;
+
+// RPCs declared out of alphabetical order so the contrast against the
+// default ENCOUNTER rpcSortMode is visible in this suite's fixture.
+service WheelService {
+    rpc Zoom(ZoomRequest) returns (ZoomResponse);
+    rpc Accelerate(AccelerateRequest) returns (AccelerateResponse);
+    rpc Brake(BrakeRequest) returns (BrakeResponse);
+}
+
+message ZoomRequest {}
+message ZoomResponse {}
+message AccelerateRequest {}
+message AccelerateResponse {}
+message BrakeRequest {}
+message BrakeResponse {}

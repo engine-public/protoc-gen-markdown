@@ -1,7 +1,7 @@
 ---
 generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
 protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
-protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null
+protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=false,minTableOfContentsHeader=null,maxTableOfContentsHeader=null,outputType=PER_FILE,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER
 ---
 
 # <a id="engine_protoc_markdown_example_generatestableanchors_generate_stable_anchors_proto"></a>engine/protoc/markdown/example/generatestableanchors/generate\_stable\_anchors.proto

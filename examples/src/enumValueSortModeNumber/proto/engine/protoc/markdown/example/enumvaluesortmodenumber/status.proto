@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.enumvaluesortmodenumber;
+
+option java_package = "com.engine.protoc.markdown.example.enumvaluesortmodenumber";
+option java_multiple_files = true;
+
+// Same Status layout as the sibling enumValueSortModeAlphabetical suite — values
+// whose declaration, alphabetical, and numeric orders are pairwise distinct — so
+// the fixtures can be diffed against each other and against the ENCOUNTER default
+// in the `hello` baseline.
+enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_BETA = 10;
+    STATUS_ALPHA = 30;
+    STATUS_ZEBRA = 20;
+}
