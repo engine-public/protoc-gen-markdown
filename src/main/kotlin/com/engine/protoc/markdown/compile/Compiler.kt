@@ -283,7 +283,9 @@ internal class Compiler(
     internal fun planDocuments(): List<PlannedDocument> {
         val plan = mutableListOf<PlannedDocument>()
         val overviewTitle = overviewGroup?.title
-        overviewGroup?.let { plan += PlannedDocument(it.filename, it.title, parentTitle = null) }
+        overviewGroup?.let {
+            plan += PlannedDocument(it.filename, it.title, parentTitle = null, kind = PlannedDocument.Kind.OVERVIEW)
+        }
 
         when (options.outputType) {
             ProtocGenMarkdown.Options.OutputType.PER_FILE -> {
@@ -291,22 +293,42 @@ internal class Compiler(
                 for (group in packageIndexGroups) {
                     val pkg = group.files.firstOrNull()?.`package`?.value.orEmpty()
                     indexTitleByPackage[pkg] = group.title
-                    plan += PlannedDocument(group.filename, group.title, parentTitle = overviewTitle)
+                    plan += PlannedDocument(
+                        group.filename,
+                        group.title,
+                        parentTitle = overviewTitle,
+                        kind = PlannedDocument.Kind.PACKAGE_INDEX,
+                    )
                 }
                 for (group in outputGroups) {
                     val pkg = group.files.first().`package`?.value.orEmpty()
-                    plan += PlannedDocument(group.filename, group.title, parentTitle = indexTitleByPackage[pkg] ?: overviewTitle)
+                    plan += PlannedDocument(
+                        group.filename,
+                        group.title,
+                        parentTitle = indexTitleByPackage[pkg] ?: overviewTitle,
+                        kind = PlannedDocument.Kind.CONTENT,
+                    )
                 }
             }
 
             ProtocGenMarkdown.Options.OutputType.PER_PACKAGE ->
                 for (group in outputGroups) {
-                    plan += PlannedDocument(group.filename, group.title, parentTitle = overviewTitle)
+                    plan += PlannedDocument(
+                        group.filename,
+                        group.title,
+                        parentTitle = overviewTitle,
+                        kind = PlannedDocument.Kind.CONTENT,
+                    )
                 }
 
             ProtocGenMarkdown.Options.OutputType.SINGLE_FILE ->
                 for (group in outputGroups) {
-                    plan += PlannedDocument(group.filename, group.title, parentTitle = null)
+                    plan += PlannedDocument(
+                        group.filename,
+                        group.title,
+                        parentTitle = null,
+                        kind = PlannedDocument.Kind.CONTENT,
+                    )
                 }
         }
         return plan

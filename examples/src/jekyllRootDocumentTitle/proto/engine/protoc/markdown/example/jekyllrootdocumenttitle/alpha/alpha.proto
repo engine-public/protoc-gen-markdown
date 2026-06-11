@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllrootdocumenttitle.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllrootdocumenttitle.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `rootDocumentTitle=API Reference` set, the single top-tier root (the overview) is
+// retitled to `API Reference`, and every page that cited the overview as its `parent` — the
+// alpha and beta package indices — has that `parent` rewritten to match, keeping the
+// just-the-docs navigation tree connected.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

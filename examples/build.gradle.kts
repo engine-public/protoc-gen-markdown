@@ -41,7 +41,7 @@ val suiteRecorderOptions =
         "transitiveReferencesLinkAsPeer" to listOf("transitiveReferences=LINK_AS_PEER"),
         "transitiveReferencesIncludeFiles" to listOf("transitiveReferences=INCLUDE_FILES"),
         "referenceLink" to listOf(
-            "referenceLink=ExternalSpec=/docs/external-spec",
+            "referenceLink=ExternalSpec=example.com/docs/external-spec",
             "referenceLink=Wrapper=/docs/override-wrapper",
             "referenceLink=engine.protoc.markdown.example.transitivereferencesshared.CoreEntity=example.com/docs/core-entity",
         ),
@@ -71,12 +71,22 @@ val suiteRecorderOptions =
          * `jekyllNavigationParent` flips the one knob this plugin adds,
          * `jekyllVisibleNavigationDepth` caps the visible nav tree at the top tier so the
          * package and per-file pages pick up `nav_exclude: true`, and `jekyllRootNavOrder`
-         * sets `nav_order` on the single top-tier root page only.
+         * sets `nav_order` on the single top-tier root page only.  `jekyllOverviewLayout`,
+         * `jekyllPackageIndexLayout`, and `jekyllContentLayout` each set `layout` on exactly one
+         * document role so the fixtures show the key landing on the overview, the package-index
+         * pages, or the per-file content pages respectively — and nowhere else.
+         * `jekyllRootDocumentTitle` retitles the single top-tier root (the overview) and rewrites
+         * the `parent` of every page that cited it, so the fixtures show both the new `title` on the
+         * overview and the matching `parent` on the package pages.
          */
         "jekyll" to emptyList(),
         "jekyllNavigationParent" to listOf("navigationParent=Reference"),
         "jekyllVisibleNavigationDepth" to listOf("visibleNavigationDepth=1"),
         "jekyllRootNavOrder" to listOf("rootNavOrder=3"),
+        "jekyllOverviewLayout" to listOf("overviewLayout=home"),
+        "jekyllPackageIndexLayout" to listOf("packageIndexLayout=section"),
+        "jekyllContentLayout" to listOf("contentLayout=api"),
+        "jekyllRootDocumentTitle" to listOf("rootDocumentTitle=API Reference"),
     )
 
 /*

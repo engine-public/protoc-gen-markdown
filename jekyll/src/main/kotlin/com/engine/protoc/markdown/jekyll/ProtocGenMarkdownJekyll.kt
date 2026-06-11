@@ -1,5 +1,6 @@
 package com.engine.protoc.markdown.jekyll
 
+import com.engine.protoc.markdown.PlannedDocument
 import com.engine.protoc.markdown.ProtocGenMarkdown
 import com.engine.protoc.markdown.jekyll.compile.Compiler
 import com.engine.protoc.util.compiler.CodeGeneratorRequestWrapper
@@ -84,6 +85,11 @@ public class ProtocGenMarkdownJekyll(
          * the whole tree visible (no `nav_exclude` keys emitted) — note `0` is a meaningful value,
          * so absence rather than a sentinel signals "disabled".
          *
+         * The deepest still-visible tier (depth `N`) additionally receives `has_children: false`
+         * on any page whose children this cap hid, so just-the-docs renders no expander or on-page
+         * child list for those now-hidden pages.  Pages with no children, and every page at a
+         * shallower depth, omit the key.
+         *
          * Passed via `--markdown_jekyll_out=visibleNavigationDepth=1:outdir`.
          */
         public val visibleNavigationDepth: Int?,
@@ -108,6 +114,68 @@ public class ProtocGenMarkdownJekyll(
          * Passed via `--markdown_jekyll_out=rootNavOrder=1:outdir`.
          */
         public val rootNavOrder: Int?,
+        /**
+         * Optional Jekyll `layout` assigned to the overview page — the single top-tier landing
+         * document the core plugin emits above the package and per-file pages
+         * ([PlannedDocument.Kind.OVERVIEW]).  When set, that page receives `layout: <overviewLayout>`
+         * in its frontmatter, selecting the theme layout Jekyll wraps it in; just-the-docs and
+         * compatible themes ship layouts such as `default`, `home`, and `minimal`.  Emitted only
+         * when an overview page exists (the multi-package / multi-file layouts that produce one).
+         * Defaults to `null`, leaving the overview with no `layout` key so the theme's default
+         * applies.
+         *
+         * Passed via `--markdown_jekyll_out=overviewLayout=home:outdir`.
+         */
+        public val overviewLayout: String?,
+        /**
+         * Optional Jekyll `layout` assigned to every package-index page — the per-package landing
+         * documents emitted under [ProtocGenMarkdown.Options.OutputType.PER_FILE] with indices
+         * enabled ([PlannedDocument.Kind.PACKAGE_INDEX]).  When set, each such page receives
+         * `layout: <packageIndexLayout>` in its frontmatter.  Emitted only for the package-index
+         * tier, which exists solely under that output type; the other output types produce no such
+         * pages and so emit the key nowhere.  Defaults to `null`, leaving package-index pages with
+         * no `layout` key.
+         *
+         * Passed via `--markdown_jekyll_out=packageIndexLayout=section:outdir`.
+         */
+        public val packageIndexLayout: String?,
+        /**
+         * Optional Jekyll `layout` assigned to every content page — the documents carrying the
+         * rendered type documentation ([PlannedDocument.Kind.CONTENT]): one per input file under
+         * [ProtocGenMarkdown.Options.OutputType.PER_FILE], one per package under
+         * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE], or the lone document under
+         * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE].  When set, each content page receives
+         * `layout: <contentLayout>` in its frontmatter; the overview and package-index pages are
+         * unaffected.  Defaults to `null`, leaving content pages with no `layout` key.
+         *
+         * Passed via `--markdown_jekyll_out=contentLayout=api:outdir`.
+         */
+        public val contentLayout: String?,
+        /**
+         * Optional title for the single top-most ("root") document — the one page that parents the
+         * whole generated tree: the overview when one exists, and otherwise the lone page of a
+         * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] layout, the one package document under
+         * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] with a single package and no overview,
+         * or the one per-file document under [ProtocGenMarkdown.Options.OutputType.PER_FILE] with a
+         * single file and no overview.  When set, that page's `title` frontmatter key carries this
+         * value in place of its H1, and every page that parents onto it has its `parent` key
+         * rewritten to match — so the just-the-docs navigation tree stays connected under the new
+         * title.  Lets the auto-generated root carry a human-friendly label (e.g. `API Reference`)
+         * rather than the dotted package / longest-common-prefix the core plugin titles it with.
+         *
+         * Distinct from [navigationParent], which slots the whole tree *beneath* a separate
+         * hand-authored page: that option adds a `parent` to the roots and leaves their titles
+         * alone, while this one retitles the root itself.  The two compose — a retitled root can
+         * still carry a [navigationParent].
+         *
+         * Applies only when the top tier is a single page.  When the generated tree has more than
+         * one top-tier root (e.g. several per-file or per-package documents with no overview) there
+         * is no single page to retitle: the value is applied nowhere and a `WARN` is logged.
+         * Defaults to `null`, leaving every document titled by its H1.
+         *
+         * Passed via `--markdown_jekyll_out=rootDocumentTitle=API Reference:outdir`.
+         */
+        public val rootDocumentTitle: String?,
     ) {
 
         public class Builder private constructor(parameters: Parameters) {
@@ -122,6 +190,14 @@ public class ProtocGenMarkdownJekyll(
 
             public var rootNavOrder: Int? = parameters.get<Int>("rootNavOrder")
 
+            public var overviewLayout: String? = parameters.get<String>("overviewLayout")
+
+            public var packageIndexLayout: String? = parameters.get<String>("packageIndexLayout")
+
+            public var contentLayout: String? = parameters.get<String>("contentLayout")
+
+            public var rootDocumentTitle: String? = parameters.get<String>("rootDocumentTitle")
+
             public companion object {
                 public fun from(parameters: Parameters): Builder = Builder(parameters)
             }
@@ -133,6 +209,10 @@ public class ProtocGenMarkdownJekyll(
                     navigationParent = navigationParent,
                     visibleNavigationDepth = visibleNavigationDepth,
                     rootNavOrder = rootNavOrder,
+                    overviewLayout = overviewLayout,
+                    packageIndexLayout = packageIndexLayout,
+                    contentLayout = contentLayout,
+                    rootDocumentTitle = rootDocumentTitle,
                 )
         }
     }

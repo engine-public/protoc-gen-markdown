@@ -1,7 +1,7 @@
 ---
 generated-by: https://github.com/hotelengine/protoc-gen-markdown/releases/tag/0.0.0-pre.0
 protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
-protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=true,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includeIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID,referenceLink=ExternalSpec=/docs/external-spec,referenceLink=Wrapper=/docs/override-wrapper,referenceLink=engine.protoc.markdown.example.transitivereferencesshared.CoreEntity=example.com/docs/core-entity
+protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=true,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includeIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID,referenceLink=ExternalSpec=example.com/docs/external-spec,referenceLink=Wrapper=/docs/override-wrapper,referenceLink=engine.protoc.markdown.example.transitivereferencesshared.CoreEntity=example.com/docs/core-entity
 # @@protoc_insertion_point(frontmatter)
 ---
 
@@ -44,7 +44,7 @@ three render with the override URLs regardless of what the resolver would otherw
 find.  The `core` field also demonstrates the side effect: without the override the
 default `transitiveReferences=LINK_AS_PEER` would add the shared `core.proto` as a
 peer file, but the FQN override suppresses that promotion so no peer document is
-produced for this suite.  See [ExternalSpec](/docs/external-spec) and [Wrapper](/docs/override-wrapper) in the rendered output.
+produced for this suite.  See [ExternalSpec](example.com/docs/external-spec) and [Wrapper](/docs/override-wrapper) in the rendered output.
 
 <!-- @@protoc_insertion_point(message_scope:engine.protoc.markdown.example.referencelink.Wrapper) -->
 
