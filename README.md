@@ -10,6 +10,7 @@ The plugin compiles to a native binary via GraalVM so it can be used directly in
 | path | description |
 |---|---|
 | **root** (`src/`) | The plugin executable. Reads `CodeGeneratorRequest` from stdin and writes `CodeGeneratorResponse` to stdout, per the protoc plugin protocol. |
+| [`jekyll/`](jekyll/README.md) | Companion plugin `protoc-gen-markdown-jekyll`. Runs alongside this plugin and injects [Jekyll](https://jekyllrb.com/) navigation keys (`title`, `parent`) into each generated document's `frontmatter` insertion point, turning the output into a [just-the-docs](https://just-the-docs.com)-style navigation tree. See its [README](jekyll/README.md). |
 | [`examples/`](examples/) | Acceptance test suite. Each example fixes one compiler option to a non-default value and dumps the resulting documents as checked-in reference fixtures. |
 
 ## What it renders
@@ -114,6 +115,8 @@ Two design choices make this plugin easy to combine with sibling protoc plugins 
 
 1. **Deterministic output filenames.**  For any compile request, the set of `.md` paths this plugin produces is a pure function of the input file list, those files' proto `package` directives, and the `outputType` option — no descriptor traversal needed.  A sibling plugin can predict the same paths and emit `CodeGeneratorResponse.File` entries that line up with them.
 2. **Named insertion points.**  When `generateInsertionPoints=true` (default on), the plugin emits a fixed catalog of `<!-- @@protoc_insertion_point(NAME) -->` markers.  Sibling plugins target these names via the standard `CodeGeneratorResponse.File.insertion_point` / `content` fields, and `protoc` itself splices the content in immediately before the marker line.
+
+The bundled [`protoc-gen-markdown-jekyll`](jekyll/README.md) plugin is the reference example of both: it reconstructs the exact output filenames and reuses the same layout planner to inject Jekyll navigation keys at the `frontmatter` insertion point. **Read more: [`jekyll/README.md`](jekyll/README.md).**
 
 ### Output filenames
 

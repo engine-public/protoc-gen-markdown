@@ -4,7 +4,7 @@ protoc-gen-markdown-generated-on: 2026-01-01T00:00:00Z
 protoc-gen-markdown-options: generateStableAnchors=true,generateInsertionPoints=false,minTableOfContentsHeader=2,maxTableOfContentsHeader=3,outputType=PER_FILE,includeIndices=true,typeSortMode=ALPHABETICAL,fileSortMode=ALPHABETICAL,rpcSortMode=ENCOUNTER,fieldSortMode=ENCOUNTER,enumValueSortMode=ENCOUNTER,resolveReferenceLinksMode=FAIL_ON_INVALID
 ---
 
-# <a id="Overview__engine_protoc_markdown_example_generateinsertionpointsoff"></a>Overview: engine.protoc.markdown.example.generateinsertionpointsoff
+# <a id="engine_protoc_markdown_example_generateinsertionpointsoff"></a>engine.protoc.markdown.example.generateinsertionpointsoff
 
 ___
 

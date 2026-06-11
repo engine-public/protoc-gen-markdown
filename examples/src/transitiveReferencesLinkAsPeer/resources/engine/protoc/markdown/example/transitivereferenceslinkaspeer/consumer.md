@@ -30,7 +30,7 @@ ___
 
 <!-- @@protoc_insertion_point(message_header_scope:engine.protoc.markdown.example.transitivereferenceslinkaspeer.Consumer) -->
 
-Exercises transitiveReferences=LINK\_AS\_PEER (the default) — a reference to [CoreEntity](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity),
+Exercises transitiveReferences=LINK\_AS\_PEER (the default) — a reference to [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity),
 which lives in the transitive-only `core.proto`, is linked to where the peer `.md`
 would land if a sibling protoc run rendered `core.proto` with the same options.  No
 peer `.md` is emitted by this suite, so the link target won't exist in this suite's
@@ -42,17 +42,17 @@ own output set — but the link shape is the one a parallel render would land on
 
 |Name|Type|Description|
 |---|---|---|
-|entity|[CoreEntity](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity)|The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity). [...](#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-entity)|
-|status|[CoreStatus](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus)|Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus). [...](#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-status)|
+|entity|[CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity)|The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity). [...](#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-entity)|
+|status|[CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus)|Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus). [...](#engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-status)|
 
 #### <a id="engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-entity"></a>entity
 
-The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity).
+The entity this consumer wraps; see [CoreEntity](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Messages-CoreEntity).
 
 ##### <a id="engine_protoc_markdown_example_transitivereferenceslinkaspeer_consumer_proto-Messages-Consumer-Field_Details-status"></a>status
 
-Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#File__engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus).
+Lifecycle status; see [CoreStatus](../transitivereferencesshared/core.md#engine_protoc_markdown_example_transitivereferencesshared_core_proto-Enums-CoreStatus).
 
 <!-- @@protoc_insertion_point(file_footer) -->

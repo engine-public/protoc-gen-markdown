@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllrootnavorder.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllrootnavorder.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `rootNavOrder=3` set, only the single top-tier root page (here the overview) receives
+// `nav_order: 3`; the package and per-file pages omit the key so their relative order stays
+// title-alphabetical.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

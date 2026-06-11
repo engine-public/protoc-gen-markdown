@@ -1,5 +1,6 @@
 package com.engine.protoc.markdown.compile
 
+import com.engine.protoc.markdown.PlannedDocument
 import com.engine.protoc.markdown.ProtocGenMarkdown
 import com.engine.protoc.markdown.ProtocGenMarkdown.Options.MemberSortMode
 import com.engine.protoc.markdown.ProtocGenMarkdown.Options.SortMode
@@ -186,7 +187,7 @@ internal class Compiler(
      * How many levels [headingOf] should add to the [HEADING_SECTION] / [HEADING_TYPE] /
      * [HEADING_FIELD_SECTION] / [HEADING_FIELD] base levels for the document currently being
      * rendered.  `0` in [ProtocGenMarkdown.Options.OutputType.PER_FILE] (the doc's L1 is the
-     * file's own path heading, so the body sits at L2..L5); `1` in
+     * file's `<path>` heading, so the body sits at L2..L5); `1` in
      * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] /
      * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (the doc's L1 is the package /
      * single-file-overview label, each input file is then an L2 sub-heading, and the body
@@ -254,19 +255,76 @@ internal class Compiler(
         if (collectedFailures.isNotEmpty() &&
             options.resolveReferenceLinksMode == ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID
         ) {
-            response.addError(formatReferenceLinkFailures(collectedFailures))
+            val summary = referenceLinkFailureSummary(collectedFailures.distinct())
+            log.error("protoc-gen-markdown failed:\n{}", summary)
+            response.addError("protoc-gen-markdown failed:\n$summary")
         }
         return response.build()
     }
 
     /**
-     * Format every collected resolver failure as a human-readable multi-line error message.
-     * Each line names the proto file, the descriptor whose comment held the bad reference, the
-     * bracketed label, and the reason (unresolved or ambiguous with the colliding candidates).
+     * The documents [compile] would emit, described as a flat list with their natural parent → child
+     * hierarchy, but without rendering any Markdown.  Mirrors the exact file set and paths
+     * [compile] produces — `outputGroups`, `packageIndexGroups`, and `overviewGroup` — so a sibling
+     * tool can position each page in a navigation tree.  The tiers are:
+     *
+     *  - the `overviewGroup` (when present) is the single top-tier root (`parentTitle == null`);
+     *  - under [ProtocGenMarkdown.Options.OutputType.PER_FILE], each package-index document parents
+     *    onto the overview, and each per-file document parents onto its package index — or onto the
+     *    overview when that package's index was dropped/absent;
+     *  - under [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE], each consolidated package
+     *    document parents onto the overview;
+     *  - under [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE], the single document is itself the
+     *    root.
+     *
+     * When a tier does not exist its children collapse onto the nearest ancestor that does, and the
+     * highest surviving tier reports `parentTitle == null`.
      */
-    private fun formatReferenceLinkFailures(failures: List<ReferenceLinkResolver.Failure>): String =
+    internal fun planDocuments(): List<PlannedDocument> {
+        val plan = mutableListOf<PlannedDocument>()
+        val overviewTitle = overviewGroup?.title
+        overviewGroup?.let { plan += PlannedDocument(it.filename, it.title, parentTitle = null) }
+
+        when (options.outputType) {
+            ProtocGenMarkdown.Options.OutputType.PER_FILE -> {
+                val indexTitleByPackage = HashMap<String, String>()
+                for (group in packageIndexGroups) {
+                    val pkg = group.files.firstOrNull()?.`package`?.value.orEmpty()
+                    indexTitleByPackage[pkg] = group.title
+                    plan += PlannedDocument(group.filename, group.title, parentTitle = overviewTitle)
+                }
+                for (group in outputGroups) {
+                    val pkg = group.files.first().`package`?.value.orEmpty()
+                    plan += PlannedDocument(group.filename, group.title, parentTitle = indexTitleByPackage[pkg] ?: overviewTitle)
+                }
+            }
+
+            ProtocGenMarkdown.Options.OutputType.PER_PACKAGE ->
+                for (group in outputGroups) {
+                    plan += PlannedDocument(group.filename, group.title, parentTitle = overviewTitle)
+                }
+
+            ProtocGenMarkdown.Options.OutputType.SINGLE_FILE ->
+                for (group in outputGroups) {
+                    plan += PlannedDocument(group.filename, group.title, parentTitle = null)
+                }
+        }
+        return plan
+    }
+
+    /**
+     * Multi-line human-readable bundle of every distinct comment-reference failure collected
+     * during compile.  Used twice at end-of-compile: once as the body of a `log.error` line that
+     * lands in stderr (and `logFile`, when configured) so the customer sees a single
+     * consolidated re-iteration alongside the per-occurrence `ERROR` lines emitted by
+     * [ReferenceLinkResolver]; once as the payload of [CodeGeneratorResponse.error] so protoc
+     * surfaces the same bundle when the plugin is run inside `protoc`.  Each bullet names the
+     * proto file, the descriptor whose comment held the bad reference, the bracketed label, and
+     * the reason (unresolved or ambiguous with the colliding candidates).  The leading count
+     * line distinguishes the singular and plural cases.
+     */
+    private fun referenceLinkFailureSummary(failures: List<ReferenceLinkResolver.Failure>): String =
         buildString {
-            append("protoc-gen-markdown: ")
             append(failures.size)
             append(if (failures.size == 1) " reference-link failure under " else " reference-link failures under ")
             appendLine("resolveReferenceLinksMode=FAIL_ON_INVALID:")
@@ -383,7 +441,7 @@ internal class Compiler(
             }
         }
         peers.associateWith { f ->
-            OutputGroup(perFileFilename(f), listOf(f), "File: ${titleOf(f)}")
+            OutputGroup(perFileFilename(f), listOf(f), titleOf(f))
         }
     }
 
@@ -429,16 +487,19 @@ internal class Compiler(
      * The set of `.md` files this compile will produce, in the order [compile] emits them.
      *
      *  - [ProtocGenMarkdown.Options.OutputType.PER_FILE]: one group per scope file, filename
-     *    derived by swapping `.proto` for `.md` on the file's relative path.
+     *    derived by swapping `.proto` for `.md` on the file's relative path.  H1 title is
+     *    the file's relative path.
      *  - [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE]: one group per distinct
      *    `package` declared across the scope files.  When every file declaring a given
      *    non-empty package lives at the directory whose path is the package with `.` → `/`,
      *    the group's filename is `<pkg-as-dir>/package.md` (the "namespaced" case).
      *    Otherwise it is `<fully.qualified.package>.md` at the output root.  Files with no
-     *    `package` directive collapse to a single group at `default.md`.
+     *    `package` directive collapse to a single group at `default.md`.  H1 title is
+     *    the dotted package (or `Default Package` for the no-package group).
      *  - [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE]: one group containing every
      *    scope file, named `<longest-common-package-prefix>.md` at the output root, or
-     *    `overview.md` when no common prefix exists.
+     *    `overview.md` when no common prefix exists.  H1 title is the longest common
+     *    package prefix, or the label `Overview` when no common prefix exists.
      */
     private val outputGroups: List<OutputGroup> by lazy {
         when (options.outputType) {
@@ -454,8 +515,9 @@ internal class Compiler(
             ProtocGenMarkdown.Options.OutputType.SINGLE_FILE -> {
                 val files = scopeFiles
                 val lcp = longestCommonPackagePrefix(files.map { it.`package`?.value.orEmpty() })
-                val title = lcp.ifEmpty { "overview" }
-                listOf(OutputGroup("$title.md", sortedGroupFiles(files), title))
+                val filename = lcp.ifEmpty { "overview" } + ".md"
+                val title = lcp.ifEmpty { "Overview" }
+                listOf(OutputGroup(filename, sortedGroupFiles(files), title))
             }
         }
     }
@@ -534,25 +596,26 @@ internal class Compiler(
             return@lazy null
         }
         val lcp = longestCommonPackagePrefix(scopeFiles.map { it.`package`?.value.orEmpty() })
-        val title = if (lcp.isEmpty()) "Overview" else "Overview: $lcp"
+        val title = lcp.ifEmpty { "Overview" }
         OutputGroup(filename, scopeFiles, title)
     }
 
     /**
      * Output-file shape for a single proto package's worth of files under
-     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE].  A non-empty package is treated as
-     * "namespaced" when every file declaring it lives at the directory whose path is the
-     * package with `.` → `/` (e.g. `foo/bar/whatever.proto` for `package foo.bar`); in that
-     * case the consolidated file is `<pkg-as-dir>/package.md`.  Otherwise the file is dropped
-     * at the output root as `<fully.qualified.package>.md`.  Files with no `package` directive
-     * collapse into a single `default.md` group titled `(no package)`.
+     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] (and reused by [packageIndexGroups]).
+     * A non-empty package is treated as "namespaced" when every file declaring it lives at the
+     * directory whose path is the package with `.` → `/` (e.g. `foo/bar/whatever.proto` for
+     * `package foo.bar`); in that case the consolidated file is `<pkg-as-dir>/package.md`.
+     * Otherwise the file is dropped at the output root as `<fully.qualified.package>.md`.
+     * Files with no `package` directive collapse into a single `default.md` group titled
+     * `Default Package`; non-empty packages produce a title of the dotted package.
      */
     private fun packageGroup(
         pkg: String,
         pkgFiles: List<FileDescriptorProtoWrapper>,
     ): OutputGroup {
         val sortedFiles = sortedGroupFiles(pkgFiles)
-        if (pkg.isEmpty()) return OutputGroup("default.md", sortedFiles, "(no package)")
+        if (pkg.isEmpty()) return OutputGroup("default.md", sortedFiles, "Default Package")
         val pkgAsDir = pkg.replace('.', '/')
         val namespaced =
             pkgFiles.all { f ->
@@ -722,11 +785,11 @@ internal class Compiler(
 
     /**
      * Render the navigation-only `.md` for a package index group.  The document carries the
-     * shared frontmatter and a single H1 with the group title (the dotted package name, or
-     * `(no package)` for files with no `package` directive), then a `file → section → type →
-     * member` bulleted Table of Contents whose every entry hyperlinks to an anchor inside
-     * one of the per-file `.md`s.  Anchor naming honors
-     * [ProtocGenMarkdown.Options.generateStableAnchors] via [hrefFor].
+     * shared frontmatter and a single H1 carrying the group's title
+     * (the dotted package, or `Default Package` for files with no `package`
+     * directive), then a `file → section → type → member` bulleted Table of Contents whose
+     * every entry hyperlinks to an anchor inside one of the per-file `.md`s.  Anchor naming
+     * honors [ProtocGenMarkdown.Options.generateStableAnchors] via [hrefFor].
      *
      * Built directly out of [Heading] / [BulletList] / [ListItem] nodes — no calls to
      * [headingOf] / [fixedHeading], which would scribble entries into the shared [headings]
@@ -760,7 +823,7 @@ internal class Compiler(
 
     /**
      * Render the navigation-only `overview.md` for [overviewGroup].  Frontmatter + an H1
-     * (`# Overview` or `# Overview: <longest-common-package-prefix>`, matching
+     * (`# Overview` or `# <longest-common-package-prefix>`, matching
      * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE]'s title shape) + a thematic break + a
      * flat bulleted list of `[<package>](<relative-link-to-pkg-md>)` entries, one per distinct
      * proto package in [scopeFiles], sorted alphabetically by dotted name.  The link target is
@@ -816,7 +879,7 @@ internal class Compiler(
     ): ListItem {
         val file = body.file
         val fileTitle = titleOf(file)
-        val filePath = listOf(fileTitle)
+        val filePath = listOf(fileToGroup[file]!!.title)
         val item = ListItem().apply { appendChild(crossFileLinkParagraph(fileTitle, file, filePath, currentMd)) }
 
         val inner = BulletList()
@@ -991,7 +1054,7 @@ internal class Compiler(
      * [ProtocGenMarkdown.Options.maxTableOfContentsHeader]:
      *
      *  - both `null` → no TOC is rendered at all.  The thematic break stays put.
-     *  - min `null`, max set → min is treated as 1 (the L1 file-path heading is included).
+     *  - min `null`, max set → min is treated as 1 (the document's L1 title heading is included).
      *  - max `null`, min set → all headings at level `>= min` are included.
      *  - both set → headings whose level is in `[min, max]` inclusive are included.
      *  - min > max → a warning is logged and no TOC is rendered.  Thematic break stays put.

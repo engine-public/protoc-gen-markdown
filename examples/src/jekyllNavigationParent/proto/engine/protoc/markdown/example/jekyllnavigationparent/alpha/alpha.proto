@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.jekyllnavigationparent.alpha;
+
+option java_package = "com.engine.protoc.markdown.example.jekyllnavigationparent.alpha";
+option java_multiple_files = true;
+
+// A message in the alpha package.
+//
+// With `navigationParent=Reference` set, the top-tier overview page is re-parented under a
+// hand-authored `Reference` page, while the package and per-file pages keep their natural parents.
+message Alpha {
+    // The alpha's name.
+    string name = 1;
+}

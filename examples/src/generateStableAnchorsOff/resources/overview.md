@@ -5,7 +5,7 @@ protoc-gen-markdown-options: generateStableAnchors=false,generateInsertionPoints
 # @@protoc_insertion_point(frontmatter)
 ---
 
-# Overview: engine.protoc.markdown.example.generatestableanchorsoff
+# engine.protoc.markdown.example.generatestableanchorsoff
 
 <!-- @@protoc_insertion_point(file_header) -->
 
