@@ -1,0 +1,8 @@
+- [x] option for stable anchors
+- [ ] option for output types...
+  - [ ] file per compile
+  - [ ] file per package
+  - [ ] file per input
+- [ ] protoc_insertion_points
+- [x] option for ToC visibility
+- [x] option for ToC depth h2-h3 default

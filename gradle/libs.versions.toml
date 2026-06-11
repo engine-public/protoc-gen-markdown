@@ -30,6 +30,7 @@ engine-protoc-utils = { group = "com.engine", name = "protoc-utils", version.ref
 protobuf-java = { group = "com.google.protobuf", name = "protobuf-java", version.ref = "protobuf" }
 graalvm-sdk = { group = "org.graalvm.sdk", name = "graal-sdk", version.ref = "graalvm-sdk" }
 commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "commonmark" }
+commonmark-ext-gfm-tables = { group = "org.commonmark", name = "commonmark-ext-gfm-tables", version.ref = "commonmark" }
 
 # test dependencies
 test-kotest-assertions-core = { group = "io.kotest", name = "kotest-assertions-core", version.ref = "kotest" }

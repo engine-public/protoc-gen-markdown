@@ -1,250 +1,754 @@
 package com.engine.protoc.markdown.compile
 
 import com.engine.protoc.markdown.ProtocGenMarkdown
-import com.engine.protoc.markdown.ProtocGenMarkdown.Options.DocumentType
-import com.engine.protoc.markdown.Version
+import com.engine.protoc.util.Locatable
 import com.engine.protoc.util.compiler.CodeGeneratorRequestWrapper
 import com.engine.protoc.util.compiler.CodeGeneratorResponseWrapper
 import com.engine.protoc.util.enums.EnumDescriptorProtoWrapper
+import com.engine.protoc.util.enums.EnumValueDescriptorProtoWrapper
 import com.engine.protoc.util.file.FileDescriptorProtoWrapper
+import com.engine.protoc.util.file.SourceCodeInfoWrapper
 import com.engine.protoc.util.message.DescriptorProtoWrapper
 import com.engine.protoc.util.message.FieldDescriptorProtoWrapper
+import com.engine.protoc.util.service.MethodDescriptorProtoWrapper
 import com.engine.protoc.util.service.ServiceDescriptorProtoWrapper
 import com.google.protobuf.DescriptorProtos.FieldDescriptorProto.Label
 import com.google.protobuf.DescriptorProtos.FieldDescriptorProto.Type
 import com.google.protobuf.compiler.PluginProtos
+import org.commonmark.ext.gfm.tables.TableBlock
+import org.commonmark.ext.gfm.tables.TableBody
+import org.commonmark.ext.gfm.tables.TableCell
+import org.commonmark.ext.gfm.tables.TableHead
+import org.commonmark.ext.gfm.tables.TableRow
+import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.node.BulletList
-import org.commonmark.node.Code
 import org.commonmark.node.Document
+import org.commonmark.node.HardLineBreak
 import org.commonmark.node.Heading
+import org.commonmark.node.HtmlBlock
+import org.commonmark.node.HtmlInline
+import org.commonmark.node.Link
 import org.commonmark.node.ListItem
+import org.commonmark.node.Node
 import org.commonmark.node.Paragraph
+import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.Text
+import org.commonmark.node.ThematicBreak
+import org.commonmark.parser.Parser
 import org.commonmark.renderer.markdown.MarkdownRenderer
 
 /**
- * Per compile invocation, emits one or more `.md` files based on
- * [ProtocGenMarkdown.Options.documentTypes] — see [DocumentType] for what each kind produces and
- * how its filename is formed.  Every document is built up as a CommonMark [Document] tree and
- * rendered via [MarkdownRenderer], so the output is guaranteed to be parseable by the same
- * library that produced it.
+ * Per compile invocation, emits one `.md` file per entry in `request.filesToGenerate`.  Each
+ * document is an outline of the proto:
  *
- * Sections within each document:
- *  - top-level `# <title>` heading with a leading attribution paragraph;
- *  - one `## <enum-name>` section per top-level enum, with values as a bullet list;
- *  - one `## <message-name>` section per top-level message, with fields as a bullet list
- *    (`<type> <name>` per item; `repeated` is rendered with a trailing `[]`);
- *  - one `## <service-name>` section per service, with methods as a bullet list
- *    (`RpcName(Request) Response`, with a `stream` marker on either side for streaming RPCs).
+ *  - A `# <path>` heading carrying the proto's full relative path as protoc reports it.
+ *  - A horizontal rule under the title, emitted whenever the file declares at least one service,
+ *    message, or enum — independent of the Table of Contents.
+ *  - A `<details><summary>Table of contents</summary>` block listing the file's headings as a
+ *    nested bullet list of intra-document anchor links.  Opt-in via the `minTableOfContentsHeader`
+ *    / `maxTableOfContentsHeader` options (both `null` by default — no TOC); see
+ *    [renderTableOfContents] for the level-range semantics.
+ *  - A `## Services` section listing each service as `### <ServiceName>`.  Under each heading:
+ *    the service's leading proto comment, then a `#### RPC Summary` heading and a GFM pipe
+ *    table of the service's RPCs with columns `Name | Input | Output | Description`.  Input
+ *    and output types link to the file declaring them whenever the type's file is in the
+ *    compile scope; client- or server-streaming markers prefix the corresponding type cell
+ *    with `stream `.  The description column carries only the first paragraph of each RPC's
+ *    leading comment so the pipe-table syntax stays valid; when an RPC's comment has additional
+ *    content, a trailing `[...](#<rpc-anchor>)` link points at a `##### <RpcName>` expansion
+ *    grouped under a `#### RPC Details` heading emitted after the table.  `RPC Details` is
+ *    omitted when no RPC needs an expansion.
+ *  - A `## Messages` section listing each message as `### <Dotted.Name>`.  Under each heading:
+ *    the message's leading proto comment (parsed as CommonMark so links/lists/etc. round-trip),
+ *    a `#### Field Summary` heading, then a GFM pipe table of the message's fields with
+ *    columns `Name | Type | Description`.  The type column links to the file containing that
+ *    type (relative path) whenever the type's file is in the compile scope; out-of-scope and
+ *    scalar types appear as plain text.  Repeated fields are prefixed with `repeated ` in the
+ *    type cell.  The description cell carries only the first paragraph of the field's leading
+ *    comment so the pipe-table syntax stays valid; if the comment has additional content
+ *    beyond that first paragraph, a trailing `[...](#<field-anchor>)` link points at a
+ *    `##### <fieldName>` expansion grouped under a `#### Field Details` heading emitted after
+ *    the table.  `Field Details` is omitted when no field needs an expansion.
+ *  - A `## Enums` section listing each enum as `### <Dotted.Name>`.  Under each heading:
+ *    the enum's leading proto comment, then a `#### Value Summary` heading and a GFM pipe
+ *    table of the enum's values with columns `Name | Number | Description`.  The description
+ *    column carries only the first paragraph of each value's leading comment; when a value's
+ *    comment has additional content, a trailing `[...](#<value-anchor>)` link points at a
+ *    `##### <ValueName>` expansion grouped under a `#### Value Details` heading emitted after
+ *    the table.  `Value Details` is omitted when no value needs an expansion.
  *
- * For [DocumentType.COMPLETE], each input proto becomes a `## <file-name>` section and its types
- * shift down to `### <type-name>` to keep the heading hierarchy stable.
+ * Sections are omitted when their kind has no entries.  Map-entry synthetic messages are
+ * skipped everywhere (Messages section, enum collection, type index).
  *
- * Nested messages, oneofs, maps, well-known-type suppression, deprecated styling, and per-message
- * focus documents are not yet handled — this is the initial skeleton; extend by adding rendering
- * helpers below and surfacing new options on [ProtocGenMarkdown.Options].
+ * With `generateStableAnchors=true`, every heading carries an explicit `<a id="…"></a>` whose
+ * id is its full ancestor-heading path joined with `-`, with characters other than ASCII
+ * letters/digits/`-`/`_` replaced by `_`.  Same-named headings under different parents — two
+ * `### Foo` under different message sections, two `##### text` fields under different messages
+ * — get distinct ids this way.  Intra-document links (TOC entries, `[...](#…)` field-expansion
+ * links) target these explicit ids rather than relying on a renderer's heading-text auto-anchor.
+ *
+ * With `generateStableAnchors=false` (the default), no `<a id>` element is emitted and
+ * intra-document links target the GFM-style slug of the leaf heading text (lowercased, whitespace
+ * → `-`, characters other than alphanumerics/`-`/`_` dropped) — the convention common renderers
+ * derive from the heading text itself.  Cheaper output but vulnerable to heading-text collisions.
+ *
+ * The CommonMark tree is built up via [Document] + the GFM tables extension and rendered with
+ * [MarkdownRenderer]; comments are parsed with [Parser] so block-level CommonMark inside a
+ * comment (lists, blockquotes, fenced code, links, …) round-trips faithfully wherever it
+ * appears (under headings, under field expansions).
  */
 internal class Compiler(
     private val request: CodeGeneratorRequestWrapper,
     private val options: ProtocGenMarkdown.Options,
 ) {
 
-    private val renderer: MarkdownRenderer = MarkdownRenderer.builder().build()
+    private val tablesExtension = TablesExtension.create()
+    private val renderer: MarkdownRenderer = MarkdownRenderer.builder().extensions(listOf(tablesExtension)).build()
+    private val parser: Parser = Parser.builder().extensions(listOf(tablesExtension)).build()
+    private val log: System.Logger = System.getLogger("com.engine.protoc.markdown")
+
+    /**
+     * Every heading the compiler emits is recorded here in document order, populated as a side
+     * effect of [headingOf].  Re-initialized at the start of each [outlineDocument] invocation
+     * so the entries always belong to the file currently being rendered.  [renderTableOfContents]
+     * is the sole consumer.
+     */
+    private data class HeadingRef(
+        val level: Int,
+        val text: String,
+        val path: List<String>,
+    )
+
+    private val headings: MutableList<HeadingRef> = mutableListOf()
 
     internal fun compile(): PluginProtos.CodeGeneratorResponse {
         val response = CodeGeneratorResponseWrapper()
-        if (DocumentType.FILE_OVERVIEW in options.documentTypes) {
-            for (file in scopeFiles) response.addFile(overviewFilename(file), render(overviewDocument(file)))
-        }
-        if (DocumentType.COMPLETE in options.documentTypes) {
-            response.addFile(completeFilename(), render(completeDocument()))
-        }
+        for (file in scopeFiles) response.addFile(outlineFilename(file), render(outlineDocument(file)))
         return response.build()
     }
 
-    // ===== Scope =================================================================================
-
     private val scopeFiles: List<FileDescriptorProtoWrapper> by lazy {
         val toGenerate = request.filesToGenerate.toSet()
-        request.protoFiles.filter {
-            it.name in toGenerate &&
-                (it.messageTypes.isNotEmpty() || it.enumTypes.isNotEmpty() || it.services.isNotEmpty())
-        }
+        request.protoFiles.filter { it.name in toGenerate }
     }
 
-    // ===== Filenames =============================================================================
-
-    private fun overviewFilename(file: FileDescriptorProtoWrapper): String = (file.name ?: "").removeSuffix(".proto") + ".md"
-
-    private fun completeFilename(): String = (commonPackagePrefix().ifEmpty { "complete" }) + ".md"
-
-    /** Longest dotted prefix shared by every scope file's package; `""` if none or no packages. */
-    private fun commonPackagePrefix(): String {
-        val parts = scopeFiles.mapNotNull { it.`package`?.value?.takeIf(String::isNotEmpty)?.split('.') }
-        if (parts.isEmpty()) return ""
-        val limit = parts.minOf { it.size }
-        val keep = (0 until limit).takeWhile { i -> parts.all { it[i] == parts[0][i] } }
-        return keep.joinToString(".") { parts[0][it] }
-    }
-
-    // ===== Documents ============================================================================
-
-    private fun overviewDocument(file: FileDescriptorProtoWrapper): Document {
-        val doc = newDocument(file.name ?: "(unnamed)")
-        appendTypes(doc, file.enumTypes, file.messageTypes, file.services, HEADING_TYPE_AT_TOP)
-        return doc
-    }
-
-    private fun completeDocument(): Document {
-        val prefix = commonPackagePrefix()
-        val title = if (prefix.isEmpty()) "Complete schema" else "Complete schema: $prefix"
-        val doc = newDocument(title)
+    /**
+     * Fully-qualified type name → file that declares it, across every file in the compile scope.
+     * Used to resolve TYPE_MESSAGE / TYPE_ENUM field references to a relative link target.
+     * Map-entry synthetic messages are not indexed (they have no user-facing `### ` heading and
+     * fields that reference them render as plain text leaf names).
+     */
+    private val typeIndex: Map<String, FileDescriptorProtoWrapper> by lazy {
+        val map = mutableMapOf<String, FileDescriptorProtoWrapper>()
         for (file in scopeFiles) {
-            doc.appendChild(headingOf(HEADING_FILE_IN_COMPLETE, file.name ?: "(unnamed)"))
-            appendTypes(doc, file.enumTypes, file.messageTypes, file.services, HEADING_TYPE_IN_COMPLETE)
+            val pkg = file.`package`?.value
+            val prefix = if (pkg.isNullOrEmpty()) "" else "$pkg."
+            for (m in file.messageTypes) indexMessage(m, prefix, file, map)
+            for (e in file.enumTypes) {
+                val ename = e.name?.value ?: continue
+                map["$prefix$ename"] = file
+            }
         }
-        return doc
+        map
     }
 
-    private fun newDocument(title: String): Document {
+    private fun indexMessage(
+        msg: DescriptorProtoWrapper,
+        prefix: String,
+        file: FileDescriptorProtoWrapper,
+        map: MutableMap<String, FileDescriptorProtoWrapper>,
+    ) {
+        if (msg.options?.mapEntry?.value == true) return
+        val name = msg.name?.value ?: return
+        val fqn = "$prefix$name"
+        map[fqn] = file
+        val nestedPrefix = "$fqn."
+        for (n in msg.nestedTypes) indexMessage(n, nestedPrefix, file, map)
+        for (e in msg.enumTypes) {
+            val ename = e.name?.value ?: continue
+            map["$nestedPrefix$ename"] = file
+        }
+    }
+
+    private fun outlineFilename(file: FileDescriptorProtoWrapper): String = (file.name ?: "").removeSuffix(".proto") + ".md"
+
+    private fun outlineDocument(file: FileDescriptorProtoWrapper): Document {
+        headings.clear()
         val doc = Document()
-        doc.appendChild(headingOf(HEADING_TOP, title))
-        doc.appendChild(paragraphOf(attribution()))
+        val sci = file.sourceCodeInfo
+        val currentMd = outlineFilename(file)
+        val title = titleOf(file)
+        val titlePath = listOf(title)
+        doc.appendChild(headingOf(HEADING_TOP, title, titlePath))
+
+        val services = file.services
+        val messages = collectMessages(file)
+        val enums = collectEnums(file, messages)
+        val hasBody = services.isNotEmpty() || messages.isNotEmpty() || enums.isNotEmpty()
+        val thematicBreak: ThematicBreak? = if (hasBody) ThematicBreak().also { doc.appendChild(it) } else null
+
+        if (services.isNotEmpty()) {
+            val sectionPath = titlePath + "Services"
+            doc.appendChild(headingOf(HEADING_SECTION, "Services", sectionPath))
+            for (s in services) {
+                val sname = s.name?.value ?: "(unnamed)"
+                val svcPath = sectionPath + sname
+                doc.appendChild(headingOf(HEADING_TYPE, sname, svcPath))
+                appendLeadingComment(doc, sci, s)
+                appendRpcTable(doc, s, sci, currentMd, svcPath)
+            }
+        }
+
+        if (messages.isNotEmpty()) {
+            val sectionPath = titlePath + "Messages"
+            doc.appendChild(headingOf(HEADING_SECTION, "Messages", sectionPath))
+            for ((name, msg) in messages) {
+                val msgPath = sectionPath + name
+                doc.appendChild(headingOf(HEADING_TYPE, name, msgPath))
+                appendLeadingComment(doc, sci, msg)
+                appendFieldsTable(doc, msg, sci, currentMd, msgPath)
+            }
+        }
+
+        if (enums.isNotEmpty()) {
+            val sectionPath = titlePath + "Enums"
+            doc.appendChild(headingOf(HEADING_SECTION, "Enums", sectionPath))
+            for ((name, enum) in enums) {
+                val enumPath = sectionPath + name
+                doc.appendChild(headingOf(HEADING_TYPE, name, enumPath))
+                appendLeadingComment(doc, sci, enum)
+                appendValuesTable(doc, enum, sci, enumPath)
+            }
+        }
+
+        if (thematicBreak != null) renderTableOfContents(thematicBreak)
+
         return doc
     }
 
-    private fun appendTypes(
-        doc: Document,
-        enums: List<EnumDescriptorProtoWrapper>,
-        messages: List<DescriptorProtoWrapper>,
-        services: List<ServiceDescriptorProtoWrapper>,
-        headingLevel: Int,
-    ) {
-        for (e in enums) appendEnumSection(doc, e, headingLevel)
-        for (m in messages) {
-            if (m.options?.mapEntry?.value == true) continue
-            appendMessageSection(doc, m, headingLevel)
+    /**
+     * Splice a collapsible `<details>` block listing the file's headings into the document
+     * immediately after [anchor] (the title's `___` thematic break).  Which headings appear is
+     * controlled by [ProtocGenMarkdown.Options.minTableOfContentsHeader] /
+     * [ProtocGenMarkdown.Options.maxTableOfContentsHeader]:
+     *
+     *  - both `null` → no TOC is rendered at all.  The thematic break stays put.
+     *  - min `null`, max set → min is treated as 1 (the L1 file-path heading is included).
+     *  - max `null`, min set → all headings at level `>= min` are included.
+     *  - both set → headings whose level is in `[min, max]` inclusive are included.
+     *  - min > max → a warning is logged and no TOC is rendered.  Thematic break stays put.
+     *
+     * The bullet hierarchy is reconstructed from heading levels via [buildHeadingBulletList].
+     * Anchor targets come from [linkParagraph]/[anchorFor], so they respect
+     * [ProtocGenMarkdown.Options.generateStableAnchors].
+     */
+    private fun renderTableOfContents(anchor: Node) {
+        val minOpt = options.minTableOfContentsHeader
+        val maxOpt = options.maxTableOfContentsHeader
+        if (minOpt == null && maxOpt == null) return
+        if (minOpt != null && maxOpt != null && minOpt > maxOpt) {
+            log.log(
+                System.Logger.Level.WARNING,
+                "minTableOfContentsHeader=$minOpt > maxTableOfContentsHeader=$maxOpt; no table of contents will be generated",
+            )
+            return
         }
-        for (s in services) appendServiceSection(doc, s, headingLevel)
+        val effectiveMin = minOpt ?: 1
+        val effectiveMax = maxOpt ?: Int.MAX_VALUE
+        val filtered = headings.filter { it.level in effectiveMin..effectiveMax }
+        if (filtered.isEmpty()) return
+
+        val list = buildHeadingBulletList(filtered)
+        for (node in listOf(htmlBlock("<details>\n<summary>Table of contents</summary>"), list, htmlBlock("</details>")).reversed()) {
+            anchor.insertAfter(node)
+        }
     }
 
-    // ===== Type sections =========================================================================
+    /**
+     * Reconstruct a nested [BulletList] tree from a flat document-ordered list of [HeadingRef]
+     * entries via a stack-based algorithm.  Each entry becomes a [ListItem] whose paragraph is
+     * an intra-document link from [linkParagraph]; deeper-level entries nest inside the most
+     * recently added shallower item.  Gaps in level (e.g. an L5 immediately after an L3 with no
+     * intermediate L4) collapse naturally — the deeper entry attaches at whichever existing
+     * level is shallower than it, without synthesizing intermediate bullets.
+     */
+    private fun buildHeadingBulletList(filtered: List<HeadingRef>): BulletList {
+        val root = BulletList()
+        val stack: ArrayDeque<Pair<Int, BulletList>> = ArrayDeque()
+        stack.addLast(filtered.first().level to root)
+        for (h in filtered) {
+            while (stack.last().first > h.level) stack.removeLast()
+            if (stack.last().first < h.level) {
+                val parentList = stack.last().second
+                val parentItem = parentList.lastChild as ListItem
+                val nested = BulletList()
+                parentItem.appendChild(nested)
+                stack.addLast(h.level to nested)
+            }
+            val item = ListItem().apply { appendChild(linkParagraph(h.text, h.path)) }
+            stack.last().second.appendChild(item)
+        }
+        return root
+    }
 
-    private fun appendEnumSection(
-        doc: Document,
+    private fun linkParagraph(
+        text: String,
+        path: List<String>,
+    ): Paragraph {
+        val link = Link("#" + anchorFor(path), null)
+        link.appendChild(Text(text))
+        return Paragraph().apply { appendChild(link) }
+    }
+
+    /**
+     * Pick the anchor id for [path] based on [ProtocGenMarkdown.Options.generateStableAnchors].
+     * When true, returns the path-based id from [pathAnchor] — full ancestor disambiguation.
+     * When false, returns the GFM-style slug of the leaf heading text from [slugify] — what the
+     * renderer's heading-text auto-anchor would resolve to.
+     */
+    private fun anchorFor(path: List<String>): String = if (options.generateStableAnchors) pathAnchor(path) else slugify(path.last())
+
+    /**
+     * Build the anchor id for a heading from its full path of ancestor heading texts (including
+     * the heading itself).  Path segments are joined with `-`; characters other than ASCII
+     * letters, digits, `-`, or `_` are replaced by `_`, so paths like
+     * `[engine/protoc/markdown/example/hello/hello.proto, Messages, Greeting, Field Details, text]`
+     * yield `engine_protoc_markdown_example_hello_hello_proto-Messages-Greeting-Field_Details-text`.
+     * Disambiguates same-named headings under different parents (the markdown default-anchor
+     * problem this scheme exists to solve).
+     */
+    private fun pathAnchor(path: List<String>): String =
+        path.joinToString("-") { segment ->
+            buildString {
+                for (c in segment) {
+                    if (c.isLetterOrDigit() || c == '-' || c == '_') append(c) else append('_')
+                }
+            }
+        }
+
+    /**
+     * GFM-style slug of [text]: lowercase, whitespace replaced with `-`, characters other than
+     * alphanumerics/`-`/`_` dropped, leading/trailing `-` trimmed.  Mirrors the auto-anchor most
+     * markdown renderers derive from heading text, so `## Field Summary` resolves to
+     * `#field-summary` without any explicit anchor element.
+     */
+    private fun slugify(text: String): String {
+        val sb = StringBuilder()
+        for (c in text.lowercase()) {
+            when {
+                c.isLetterOrDigit() || c == '-' || c == '_' -> sb.append(c)
+                c.isWhitespace() -> sb.append('-')
+            }
+        }
+        return sb.toString().trim('-')
+    }
+
+    private fun htmlBlock(literal: String): HtmlBlock {
+        val node = HtmlBlock()
+        node.literal = literal
+        return node
+    }
+
+    /** Full relative path as protoc sees it — e.g. `foo/bar/baz.proto`. */
+    private fun titleOf(file: FileDescriptorProtoWrapper): String = file.name ?: "(unnamed)"
+
+    /**
+     * Depth-first walk of the file's message tree.  Each non-map-entry message contributes one
+     * entry, dotted ancestor-prefixed.  Map-entry messages are skipped entirely (not yielded,
+     * not descended into).
+     */
+    private fun collectMessages(file: FileDescriptorProtoWrapper): List<Pair<String, DescriptorProtoWrapper>> {
+        val out = mutableListOf<Pair<String, DescriptorProtoWrapper>>()
+        for (m in file.messageTypes) walkMessage(m, "", out)
+        return out
+    }
+
+    private fun walkMessage(
+        msg: DescriptorProtoWrapper,
+        prefix: String,
+        out: MutableList<Pair<String, DescriptorProtoWrapper>>,
+    ) {
+        if (msg.options?.mapEntry?.value == true) return
+        val name = msg.name?.value ?: "(unnamed)"
+        val qualified = if (prefix.isEmpty()) name else "$prefix.$name"
+        out += qualified to msg
+        for (n in msg.nestedTypes) walkMessage(n, qualified, out)
+    }
+
+    /**
+     * File-level enums first (no prefix), then each non-map-entry message's nested enums in the
+     * order the messages were discovered.  Walks the same tree as [collectMessages] so the
+     * map-entry skip stays consistent.
+     */
+    private fun collectEnums(
+        file: FileDescriptorProtoWrapper,
+        messages: List<Pair<String, DescriptorProtoWrapper>>,
+    ): List<Pair<String, EnumDescriptorProtoWrapper>> {
+        val out = mutableListOf<Pair<String, EnumDescriptorProtoWrapper>>()
+        for (e in file.enumTypes) out += enumName("", e) to e
+        for ((prefix, msg) in messages) {
+            for (e in msg.enumTypes) out += enumName(prefix, e) to e
+        }
+        return out
+    }
+
+    private fun enumName(
+        prefix: String,
         enum: EnumDescriptorProtoWrapper,
-        level: Int,
-    ) {
-        val name = enum.name?.value ?: "(unnamed enum)"
-        doc.appendChild(headingOf(level, "enum $name"))
-        val list = BulletList()
-        for (v in enum.values) {
-            val vname = v.name?.value ?: continue
-            list.appendChild(textListItem(vname))
-        }
-        doc.appendChild(list)
+    ): String {
+        val name = enum.name?.value ?: "(unnamed)"
+        return if (prefix.isEmpty()) name else "$prefix.$name"
     }
 
-    private fun appendMessageSection(
+    /**
+     * Look up the leading proto comment for [locatable] and append its parsed CommonMark blocks
+     * to [doc].  Treats the cleaned comment text as a CommonMark fragment, so lists, blockquotes,
+     * fenced code, links, etc. round-trip through the AST and re-render correctly.
+     */
+    private fun appendLeadingComment(
+        doc: Document,
+        sci: SourceCodeInfoWrapper?,
+        locatable: Locatable,
+    ) {
+        val text = sci?.findLocation(locatable)?.leadingComments?.cleaned ?: return
+        if (text.isBlank()) return
+        val parsed = parser.parse(text)
+        while (true) {
+            val child = parsed.firstChild ?: break
+            doc.appendChild(child)
+        }
+    }
+
+    // ===== Fields table =========================================================================
+
+    private fun appendFieldsTable(
         doc: Document,
         msg: DescriptorProtoWrapper,
-        level: Int,
+        sci: SourceCodeInfoWrapper?,
+        currentMd: String,
+        msgPath: List<String>,
     ) {
-        val name = msg.name?.value ?: "(unnamed message)"
-        doc.appendChild(headingOf(level, "message $name"))
-        val list = BulletList()
-        for (field in msg.fields) list.appendChild(fieldListItem(msg, field))
-        doc.appendChild(list)
+        if (msg.fields.isEmpty()) return
+
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Summary", msgPath + "Field Summary"))
+
+        val detailsPath = msgPath + "Field Details"
+        val expanded = mutableListOf<FieldDescriptorProtoWrapper>()
+        val table = TableBlock()
+        val head = TableHead()
+        head.appendChild(headerRow("Name", "Type", "Description"))
+        table.appendChild(head)
+        val body = TableBody()
+        for (field in msg.fields) {
+            val row = TableRow()
+            row.appendChild(TableCell().apply { appendChild(Text(field.name?.value ?: "(unnamed)")) })
+            row.appendChild(typeCell(field, currentMd))
+            val (cell, needsExpansion) = descriptionCell(field, sci, detailsPath)
+            row.appendChild(cell)
+            if (needsExpansion) expanded += field
+            body.appendChild(row)
+        }
+        table.appendChild(body)
+        doc.appendChild(table)
+
+        if (expanded.isNotEmpty()) {
+            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Field Details", detailsPath))
+            for (field in expanded) {
+                val fname = field.name?.value ?: "(unnamed)"
+                doc.appendChild(headingOf(HEADING_FIELD, fname, detailsPath + fname))
+                appendLeadingComment(doc, sci, field)
+            }
+        }
     }
 
-    private fun appendServiceSection(
+    private fun headerRow(vararg labels: String): TableRow {
+        val row = TableRow()
+        for (label in labels) {
+            row.appendChild(
+                TableCell().apply {
+                    isHeader = true
+                    appendChild(Text(label))
+                },
+            )
+        }
+        return row
+    }
+
+    private fun typeCell(
+        field: FieldDescriptorProtoWrapper,
+        currentMd: String,
+    ): TableCell {
+        val cell = TableCell()
+        if (field.label?.value == Label.LABEL_REPEATED) cell.appendChild(Text("repeated "))
+        when (val t = field.type?.value) {
+            Type.TYPE_MESSAGE, Type.TYPE_ENUM, Type.TYPE_GROUP -> appendTypeReference(cell, field.typeName?.value, currentMd)
+            null -> cell.appendChild(Text("?"))
+            else -> cell.appendChild(Text(t.name.removePrefix("TYPE_").lowercase()))
+        }
+        return cell
+    }
+
+    /**
+     * Append a leaf-name reference for a fully-qualified protobuf type [fqn] (e.g.
+     * `.engine.protoc.markdown.example.hello.Greeting`) to [cell].  If the type's declaring file
+     * is in the compile scope, emits a [Link] to that file's `.md` (relative to [currentMd]);
+     * otherwise plain text.  `null`/empty FQN renders as `?`.
+     */
+    private fun appendTypeReference(
+        cell: TableCell,
+        fqn: String?,
+        currentMd: String,
+    ) {
+        val cleaned = fqn?.removePrefix(".")
+        if (cleaned.isNullOrEmpty()) {
+            cell.appendChild(Text("?"))
+            return
+        }
+        val leaf = cleaned.substringAfterLast('.').ifEmpty { "?" }
+        val target = typeIndex[cleaned]
+        if (target != null) {
+            val link = Link(relativeLink(currentMd, outlineFilename(target)), null)
+            link.appendChild(Text(leaf))
+            cell.appendChild(link)
+        } else {
+            cell.appendChild(Text(leaf))
+        }
+    }
+
+    // ===== RPC table ============================================================================
+
+    private fun appendRpcTable(
         doc: Document,
         service: ServiceDescriptorProtoWrapper,
-        level: Int,
+        sci: SourceCodeInfoWrapper?,
+        currentMd: String,
+        svcPath: List<String>,
     ) {
-        val name = service.name?.value ?: "(unnamed service)"
-        doc.appendChild(headingOf(level, "service $name"))
-        val list = BulletList()
-        for (m in service.methods) {
-            val mname = m.name?.value ?: continue
-            val input = typeLabel(m.inputType?.value).let { if (m.clientStreaming?.value == true) "stream $it" else it }
-            val output = typeLabel(m.outputType?.value).let { if (m.serverStreaming?.value == true) "stream $it" else it }
-            list.appendChild(codeListItem("$mname($input) $output"))
+        if (service.methods.isEmpty()) return
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Summary", svcPath + "RPC Summary"))
+
+        val detailsPath = svcPath + "RPC Details"
+        val expanded = mutableListOf<MethodDescriptorProtoWrapper>()
+        val table = TableBlock()
+        val head = TableHead()
+        head.appendChild(headerRow("Name", "Input", "Output", "Description"))
+        table.appendChild(head)
+        val body = TableBody()
+        for (method in service.methods) {
+            val row = TableRow()
+            row.appendChild(TableCell().apply { appendChild(Text(method.name?.value ?: "(unnamed)")) })
+            row.appendChild(rpcTypeCell(method.inputType?.value, method.clientStreaming?.value == true, currentMd))
+            row.appendChild(rpcTypeCell(method.outputType?.value, method.serverStreaming?.value == true, currentMd))
+            val (cell, needsExpansion) = summaryDescriptionCell(sci, method, method.name?.value ?: "(unnamed)", detailsPath)
+            row.appendChild(cell)
+            if (needsExpansion) expanded += method
+            body.appendChild(row)
         }
-        doc.appendChild(list)
+        table.appendChild(body)
+        doc.appendChild(table)
+
+        if (expanded.isNotEmpty()) {
+            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "RPC Details", detailsPath))
+            for (method in expanded) {
+                val mname = method.name?.value ?: "(unnamed)"
+                doc.appendChild(headingOf(HEADING_FIELD, mname, detailsPath + mname))
+                appendLeadingComment(doc, sci, method)
+            }
+        }
     }
 
-    // ===== Field rendering =======================================================================
-
-    private fun fieldListItem(
-        msg: DescriptorProtoWrapper,
-        field: FieldDescriptorProtoWrapper,
-    ): ListItem {
-        val item = ListItem()
-        val para = Paragraph()
-        para.appendChild(Code(fieldTypeLabel(msg, field)))
-        para.appendChild(Text(" " + (field.name?.value ?: "?")))
-        item.appendChild(para)
-        return item
+    private fun rpcTypeCell(
+        fqn: String?,
+        streaming: Boolean,
+        currentMd: String,
+    ): TableCell {
+        val cell = TableCell()
+        if (streaming) cell.appendChild(Text("stream "))
+        appendTypeReference(cell, fqn, currentMd)
+        return cell
     }
 
-    /** In-list field-line type label: `Base[]` for repeated, plain `Base` otherwise. */
-    private fun fieldTypeLabel(
-        msg: DescriptorProtoWrapper,
+    // ===== Enum values table ====================================================================
+
+    private fun appendValuesTable(
+        doc: Document,
+        enum: EnumDescriptorProtoWrapper,
+        sci: SourceCodeInfoWrapper?,
+        enumPath: List<String>,
+    ) {
+        if (enum.values.isEmpty()) return
+        doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Summary", enumPath + "Value Summary"))
+
+        val detailsPath = enumPath + "Value Details"
+        val expanded = mutableListOf<EnumValueDescriptorProtoWrapper>()
+        val table = TableBlock()
+        val head = TableHead()
+        head.appendChild(headerRow("Name", "Number", "Description"))
+        table.appendChild(head)
+        val body = TableBody()
+        for (value in enum.values) {
+            val vname = value.name?.value ?: "(unnamed)"
+            val row = TableRow()
+            row.appendChild(TableCell().apply { appendChild(Text(vname)) })
+            row.appendChild(TableCell().apply { appendChild(Text(value.number?.value?.toString() ?: "?")) })
+            val (cell, needsExpansion) = summaryDescriptionCell(sci, value, vname, detailsPath)
+            row.appendChild(cell)
+            if (needsExpansion) expanded += value
+            body.appendChild(row)
+        }
+        table.appendChild(body)
+        doc.appendChild(table)
+
+        if (expanded.isNotEmpty()) {
+            doc.appendChild(headingOf(HEADING_FIELD_SECTION, "Value Details", detailsPath))
+            for (value in expanded) {
+                val vname = value.name?.value ?: "(unnamed)"
+                doc.appendChild(headingOf(HEADING_FIELD, vname, detailsPath + vname))
+                appendLeadingComment(doc, sci, value)
+            }
+        }
+    }
+
+    /**
+     * Build the field's description cell from its leading proto comment.
+     *
+     * The cell carries only the first paragraph's inline content so the GFM pipe-table syntax
+     * stays valid (one row per line).  If the parsed comment has any block beyond that first
+     * paragraph — additional paragraphs, lists, blockquotes, code, etc. — the cell also gets
+     * a trailing `[...](#<field-anchor>)` link and the function returns `true` so the caller
+     * can emit a `#### <fieldName>` expansion with the full comment underneath after the table.
+     *
+     * The anchor is the explicit path id of the field's `##### <fieldName>` expansion (parent
+     * message path + `Field Details` + field name, sanitized via [pathAnchor]).  Soft line
+     * breaks inside the first paragraph collapse to spaces and hard line breaks to `<br>` so
+     * no literal newline ever lands inside a pipe-table cell.
+     */
+    private fun descriptionCell(
         field: FieldDescriptorProtoWrapper,
+        sci: SourceCodeInfoWrapper?,
+        detailsPath: List<String>,
+    ): Pair<TableCell, Boolean> = summaryDescriptionCell(sci, field, field.name?.value ?: "(unnamed)", detailsPath)
+
+    /**
+     * Shared first-paragraph-only description cell for summary tables (Field Summary, RPC Summary).
+     * Parses [locatable]'s cleaned leading proto comment, lifts the first paragraph's inline
+     * children into a [TableCell], and — if there's any content beyond that first paragraph —
+     * appends a `[...](#…)` link pointing at the matching `##### <elementName>` expansion under
+     * the corresponding Details section and returns `true` so the caller can emit it.
+     *
+     * Soft line breaks collapse to spaces and hard line breaks to `<br>` (via [replaceLineBreaks])
+     * so no literal newline ever lands inside a pipe-table cell.
+     */
+    private fun summaryDescriptionCell(
+        sci: SourceCodeInfoWrapper?,
+        locatable: Locatable,
+        elementName: String,
+        detailsPath: List<String>,
+    ): Pair<TableCell, Boolean> {
+        val cell = TableCell()
+        val raw = sci?.findLocation(locatable)?.leadingComments?.cleaned
+        if (raw.isNullOrBlank()) return cell to false
+        val parsed = parser.parse(raw)
+        val firstBlock = parsed.firstChild ?: return cell to false
+        val needsExpansion = firstBlock !is Paragraph || firstBlock.next != null
+        if (firstBlock is Paragraph) {
+            while (true) {
+                val inline = firstBlock.firstChild ?: break
+                cell.appendChild(inline)
+            }
+        }
+        if (needsExpansion) {
+            if (cell.firstChild != null) cell.appendChild(Text(" "))
+            val anchor = "#" + anchorFor(detailsPath + elementName)
+            val link = Link(anchor, null).apply { appendChild(Text("...")) }
+            cell.appendChild(link)
+        }
+        replaceLineBreaks(cell)
+        return cell to needsExpansion
+    }
+
+    /**
+     * Walk [root]'s inline subtree and replace every soft/hard line break in place — soft breaks
+     * become a single space (CommonMark treats them as equivalent), hard breaks become `<br>` —
+     * so no literal newline ever lands inside a pipe-table cell.
+     */
+    private fun replaceLineBreaks(root: Node) {
+        var child = root.firstChild
+        while (child != null) {
+            val next = child.next
+            when (child) {
+                is SoftLineBreak -> {
+                    child.insertAfter(Text(" "))
+                    child.unlink()
+                }
+
+                is HardLineBreak -> {
+                    child.insertAfter(htmlInline("<br>"))
+                    child.unlink()
+                }
+
+                else -> replaceLineBreaks(child)
+            }
+            child = next
+        }
+    }
+
+    private fun htmlInline(literal: String): HtmlInline {
+        val node = HtmlInline()
+        node.literal = literal
+        return node
+    }
+
+    /**
+     * POSIX-style relative link from [from] (a `.md` file path) to [to] (another `.md` file path).
+     * Both are slash-separated; the result uses `..` segments to ascend from [from]'s directory
+     * to the longest shared ancestor, then descends to [to].  Same-file inputs yield the bare
+     * filename (a valid self-link).
+     */
+    private fun relativeLink(
+        from: String,
+        to: String,
     ): String {
-        @Suppress("UNUSED_PARAMETER")
-        val parent = msg // reserved for future map-entry resolution
-        val base = scalarOrRefLabel(field)
-        return if (field.label?.value == Label.LABEL_REPEATED) "$base[]" else base
+        val fromDirs = from.split('/').dropLast(1)
+        val toParts = to.split('/')
+        var shared = 0
+        while (shared < fromDirs.size && shared < toParts.size - 1 && fromDirs[shared] == toParts[shared]) {
+            shared++
+        }
+        val ups = List(fromDirs.size - shared) { ".." }
+        val downs = toParts.drop(shared)
+        return (ups + downs).joinToString("/").ifEmpty { to.substringAfterLast('/') }
     }
 
-    private fun scalarOrRefLabel(field: FieldDescriptorProtoWrapper): String =
-        when (val t = field.type?.value) {
-            Type.TYPE_MESSAGE, Type.TYPE_ENUM, Type.TYPE_GROUP -> typeLabel(field.typeName?.value)
-            null -> "?"
-            else -> t.name.removePrefix("TYPE_").lowercase()
-        }
-
-    /** Drop the package qualifier from a protobuf FQN, leaving the leaf name. */
-    private fun typeLabel(fqn: String?): String = fqn?.substringAfterLast('.') ?: "?"
-
-    // ===== Node helpers =========================================================================
-
+    /**
+     * Build a heading at [level] with the visible [text] and record a [HeadingRef] for the
+     * Table of Contents to consume later.  When
+     * [ProtocGenMarkdown.Options.generateStableAnchors] is true the heading is prefixed by an
+     * inline empty `<a>` carrying the path-based anchor id derived from [path] via [pathAnchor]
+     * — what intra-document links target so that same-named headings under different parents
+     * (e.g. two `### Foo` under different messages) stay distinct.  When false the anchor
+     * element is omitted; links rely on the renderer's heading-text auto-anchor (see [slugify]).
+     */
     private fun headingOf(
         level: Int,
         text: String,
-    ): Heading =
-        Heading().apply {
+        path: List<String>,
+    ): Heading {
+        headings += HeadingRef(level, text, path)
+        return Heading().apply {
             this.level = level
+            if (options.generateStableAnchors) appendChild(htmlInline("<a id=\"${pathAnchor(path)}\"></a>"))
             appendChild(Text(text))
         }
-
-    private fun paragraphOf(text: String): Paragraph = Paragraph().apply { appendChild(Text(text)) }
-
-    private fun textListItem(text: String): ListItem {
-        val item = ListItem()
-        item.appendChild(paragraphOf(text))
-        return item
     }
-
-    private fun codeListItem(text: String): ListItem {
-        val item = ListItem()
-        item.appendChild(Paragraph().apply { appendChild(Code(text)) })
-        return item
-    }
-
-    // ===== Render ===============================================================================
-
-    private fun attribution(): String = "Generated by protoc-gen-markdown ${Version.value} — $RELEASE_URL_PREFIX/${Version.value}"
 
     private fun render(doc: Document): String = renderer.render(doc)
 
     private companion object {
         const val HEADING_TOP = 1
-        const val HEADING_TYPE_AT_TOP = 2
-        const val HEADING_FILE_IN_COMPLETE = 2
-        const val HEADING_TYPE_IN_COMPLETE = 3
-        const val RELEASE_URL_PREFIX = "https://github.com/hotelengine/protoc-gen-markdown/releases/tag"
+        const val HEADING_SECTION = 2
+        const val HEADING_TYPE = 3
+        const val HEADING_FIELD_SECTION = 4
+        const val HEADING_FIELD = 5
     }
 }
