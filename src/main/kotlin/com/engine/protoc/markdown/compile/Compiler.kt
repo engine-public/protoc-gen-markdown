@@ -162,7 +162,7 @@ internal class Compiler(
      * rendered.  `0` in [ProtocGenMarkdown.Options.OutputType.PER_FILE] (the doc's L1 is the
      * file's own path heading, so the body sits at L2..L5); `1` in
      * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] /
-     * [ProtocGenMarkdown.Options.OutputType.PER_SESSION] (the doc's L1 is the package / session
+     * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (the doc's L1 is the package / session
      * label, each input file is then an L2 sub-heading, and the body shifts down to L3..L6).
      * Mutated at the start of [outlineDocument] for each output group; [fixedHeading] ignores
      * it and is the way to emit headings that must sit at a known absolute level (the doc's L1
@@ -181,14 +181,21 @@ internal class Compiler(
 
     /**
      * A single output `.md` file the compiler will emit: a filename plus the (one or more) input
-     * proto files whose content lands in it, plus the H1 title text that heads it.  In
-     * [ProtocGenMarkdown.Options.OutputType.PER_FILE] the group always contains exactly one
-     * file and the title equals that file's relative path; in
-     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] the group's files all share the same
-     * proto package and the title is that package name (or `(no package)` for files with no
-     * `package` directive); in [ProtocGenMarkdown.Options.OutputType.PER_SESSION] there is a
-     * single group containing every file in the compile request and the title is the longest
-     * common package prefix across them (or `overview` when none exists).
+     * proto files whose content lands in it, plus the H1 title text that heads it:
+     *  - [ProtocGenMarkdown.Options.OutputType.PER_FILE] groups always contain exactly one file
+     *    and the title is the file's relative path.
+     *  - [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] groups (and the per-package
+     *    navigation indices produced under [ProtocGenMarkdown.Options.includeIndices])
+     *    share the same proto `package` and the title is the dotted package, or
+     *    `Default Package` for files with no `package` directive.
+     *  - [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] holds a single group containing
+     *    every file in the compile request and the title is the longest common package
+     *    prefix, or the label `Overview` when there is no common prefix.
+     *
+     * Because [outlineDocument]'s `groupPath` seeds every nested heading's path with this title,
+     * the title flows through [pathAnchor] into every descendant `<a id>` — TOC entries, summary
+     * table `[...](#…)` expansions, and the cross-file links from package-index pages all stay
+     * consistent with the visible H1 text.
      */
     internal data class OutputGroup(
         val filename: String,
@@ -202,6 +209,9 @@ internal class Compiler(
 
     internal fun compile(): PluginProtos.CodeGeneratorResponse {
         log.info("compile starting with options: {}", options)
+        if (options.includeIndices && options.outputType == ProtocGenMarkdown.Options.OutputType.SINGLE_FILE) {
+            log.info("includeIndices=true has no effect under outputType=SINGLE_FILE; the consolidated output is itself the aggregator")
+        }
         val response = CodeGeneratorResponseWrapper()
         val collectedFailures = mutableListOf<ReferenceLinkResolver.Failure>()
         for (group in outputGroups) {
@@ -210,6 +220,9 @@ internal class Compiler(
         }
         for (group in packageIndexGroups) {
             response.addFile(group.filename, render(packageIndexDocument(group)))
+        }
+        overviewGroup?.let { group ->
+            response.addFile(group.filename, render(overviewDocument(group)))
         }
         if (collectedFailures.isNotEmpty() &&
             options.resolveReferenceLinksMode == ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID
@@ -251,10 +264,106 @@ internal class Compiler(
             }
         }
 
+    /**
+     * Files this compile run will render output for: always the entries protoc named in
+     * `filesToGenerate`, and additionally — under
+     * [ProtocGenMarkdown.Options.TransitiveReferences.INCLUDE_FILES] — every transitive `.proto`
+     * file referenced by at least one in-scope type, computed as the fixed point of "the file
+     * declares a message or enum referenced from an already-included file."  Sort order: original
+     * `filesToGenerate` order first, then any promoted transitive files by `file.name`.
+     */
     private val scopeFiles: List<FileDescriptorProtoWrapper> by lazy {
         val toGenerate = request.filesToGenerate.toSet()
-        request.protoFiles.filter { it.name in toGenerate }
+        val base = request.protoFiles.filter { it.name in toGenerate }
+        val candidate =
+            if (options.transitiveReferences != ProtocGenMarkdown.Options.TransitiveReferences.INCLUDE_FILES) {
+                base
+            } else {
+                val byFqn = typeIndex
+                val included: MutableSet<FileDescriptorProtoWrapper> = base.toMutableSet()
+                var frontier: Set<FileDescriptorProtoWrapper> = base.toSet()
+                while (frontier.isNotEmpty()) {
+                    val next = mutableSetOf<FileDescriptorProtoWrapper>()
+                    for (file in frontier) {
+                        for (fqn in referencedTypeFqns(file)) {
+                            val ref = byFqn[fqn] ?: continue
+                            if (ref.file !in included) next += ref.file
+                        }
+                    }
+                    included += next
+                    frontier = next
+                }
+                val promoted = included.filterNot { it in base }.sortedBy { it.name ?: "" }
+                base + promoted
+            }
+        val (kept, dropped) = candidate.partition(::hasDocumentableContent)
+        for (file in dropped) {
+            log.info("dropping {}: no documentable services, messages, or enums", file.name ?: "(unnamed)")
+        }
+        kept
     }
+
+    /**
+     * Predicate at the `scopeFiles` boundary: does this `.proto` declare anything this plugin
+     * renders?  Files that fail it carry no services, no top-level non-map-entry messages, and no
+     * enums — there's nothing to anchor an output `.md` to, so they are logged at INFO and
+     * dropped from every downstream construct (`outputGroups`, `packageIndexGroups`,
+     * `fileToGroup`).  Service-only files count as documented (the `Services` section is real
+     * output).  Top-level map-entry synthetics — protoc's auto-generated wrappers for `map<K,V>`
+     * fields — are not, mirroring the same exclusion the type index and rendering walks apply.
+     */
+    private fun hasDocumentableContent(file: FileDescriptorProtoWrapper): Boolean =
+        file.services.isNotEmpty() ||
+            file.messageTypes.any { it.options?.mapEntry?.value != true } ||
+            file.enumTypes.isNotEmpty()
+
+    /**
+     * Files in `request.protoFiles` that ended up outside [scopeFiles] but contain at least one
+     * type referenced from an in-scope file.  Populated only under
+     * [ProtocGenMarkdown.Options.TransitiveReferences.LINK_AS_PEER]; empty under
+     * [ProtocGenMarkdown.Options.TransitiveReferences.NONE] (no peer rendering implied) and under
+     * [ProtocGenMarkdown.Options.TransitiveReferences.INCLUDE_FILES] (the transitive files got
+     * promoted into [scopeFiles] instead).  Filename mirrors [perFileFilename] — the convention a
+     * sibling protoc run on the dep would land on under [ProtocGenMarkdown.Options.OutputType.PER_FILE].
+     */
+    private val peerFileToGroup: Map<FileDescriptorProtoWrapper, OutputGroup> by lazy {
+        if (options.transitiveReferences != ProtocGenMarkdown.Options.TransitiveReferences.LINK_AS_PEER) {
+            return@lazy emptyMap()
+        }
+        val byFqn = typeIndex
+        val inScopeSet = scopeFiles.toSet()
+        val peers = mutableSetOf<FileDescriptorProtoWrapper>()
+        for (file in scopeFiles) {
+            for (fqn in referencedTypeFqns(file)) {
+                val ref = byFqn[fqn] ?: continue
+                if (ref.file !in inScopeSet) peers += ref.file
+            }
+        }
+        peers.associateWith { f ->
+            OutputGroup(perFileFilename(f), listOf(f), "File: ${titleOf(f)}")
+        }
+    }
+
+    private fun referencedTypeFqns(file: FileDescriptorProtoWrapper): Sequence<String> =
+        sequence {
+            for (m in file.messageTypes) yieldAll(referencedTypeFqnsIn(m))
+            for (s in file.services) {
+                for (method in s.methods) {
+                    method.inputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }?.let { yield(it) }
+                    method.outputType?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() }?.let { yield(it) }
+                }
+            }
+        }
+
+    private fun referencedTypeFqnsIn(msg: DescriptorProtoWrapper): Sequence<String> =
+        sequence {
+            if (msg.options?.mapEntry?.value == true) return@sequence
+            for (f in msg.fields) {
+                val tn = f.typeName?.value?.removePrefix(".")?.takeIf { it.isNotEmpty() } ?: continue
+                yield(tn)
+            }
+            for (n in msg.nestedTypes) yieldAll(referencedTypeFqnsIn(n))
+        }
 
     /**
      * Maps every file in the compile scope to the [OutputGroup] it will be rendered under.  In
@@ -279,7 +388,7 @@ internal class Compiler(
      *    the group's filename is `<pkg-as-dir>/package.md` (the "namespaced" case).
      *    Otherwise it is `<fully.qualified.package>.md` at the output root.  Files with no
      *    `package` directive collapse to a single group at `default.md`.
-     *  - [ProtocGenMarkdown.Options.OutputType.PER_SESSION]: one group containing every
+     *  - [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE]: one group containing every
      *    scope file, named `<longest-common-package-prefix>.md` at the output root, or
      *    `overview.md` when no common prefix exists.
      */
@@ -294,7 +403,7 @@ internal class Compiler(
                 byPkg.map { (pkg, pkgFiles) -> packageGroup(pkg, pkgFiles) }
             }
 
-            ProtocGenMarkdown.Options.OutputType.PER_SESSION -> {
+            ProtocGenMarkdown.Options.OutputType.SINGLE_FILE -> {
                 val files = scopeFiles
                 val lcp = longestCommonPackagePrefix(files.map { it.`package`?.value.orEmpty() })
                 val title = lcp.ifEmpty { "overview" }
@@ -322,16 +431,17 @@ internal class Compiler(
 
     /**
      * Per-package navigation index files emitted alongside the per-file documents when
-     * [ProtocGenMarkdown.Options.includePackageIndices] is on and
+     * [ProtocGenMarkdown.Options.includeIndices] is on and
      * [ProtocGenMarkdown.Options.outputType] is [ProtocGenMarkdown.Options.OutputType.PER_FILE].
      * Empty otherwise — no-op under the consolidated [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE]
-     * / [ProtocGenMarkdown.Options.OutputType.PER_SESSION] modes, which already produce a single
-     * package/session document.  Filename rules mirror [packageGroup]; index whose computed
-     * filename collides with a per-file output (e.g. a proto literally named `<pkg>/package.proto`)
-     * is dropped with a warning so the per-file document wins.
+     * (each package already has its own consolidated document) and under
+     * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (the single document is itself the
+     * aggregator).  Filename rules mirror [packageGroup]; an index whose computed filename
+     * collides with a per-file output (e.g. a proto literally named `<pkg>/package.proto`) is
+     * dropped with a warning so the per-file document wins.
      */
     private val packageIndexGroups: List<OutputGroup> by lazy {
-        if (options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE || !options.includePackageIndices) {
+        if (options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE || !options.includeIndices) {
             return@lazy emptyList()
         }
         val byPkg = LinkedHashMap<String, MutableList<FileDescriptorProtoWrapper>>()
@@ -349,6 +459,35 @@ internal class Compiler(
                 group
             }
         }
+    }
+
+    /**
+     * Single navigation-only `overview.md` at the output root listing every package the compile
+     * scope declared, each linked to that package's primary `.md` — the package-index document
+     * under [ProtocGenMarkdown.Options.OutputType.PER_FILE] (filename via [packageGroup], same
+     * one [packageIndexGroups] lands on), the consolidated package document under
+     * [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] (same filename rule via [packageGroup],
+     * which `outputGroups` itself uses for that mode).  Populated when
+     * [ProtocGenMarkdown.Options.includeIndices] is on and [ProtocGenMarkdown.Options.outputType]
+     * is not [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] (that mode's single output is
+     * itself the aggregator — the no-op INFO line fires from [compile]).  When
+     * `overview.md` collides with a per-file output or a consolidated/package-index output the
+     * overview is dropped with a warning so the user's content wins.
+     */
+    private val overviewGroup: OutputGroup? by lazy {
+        if (!options.includeIndices || options.outputType == ProtocGenMarkdown.Options.OutputType.SINGLE_FILE) {
+            return@lazy null
+        }
+        if (scopeFiles.isEmpty()) return@lazy null
+        val filename = "overview.md"
+        val collisions = outputGroups.map { it.filename }.toSet() + packageIndexGroups.map { it.filename }.toSet()
+        if (filename in collisions) {
+            log.warn("skipping overview: filename {} collides with another output", filename)
+            return@lazy null
+        }
+        val lcp = longestCommonPackagePrefix(scopeFiles.map { it.`package`?.value.orEmpty() })
+        val title = if (lcp.isEmpty()) "Overview" else "Overview: $lcp"
+        OutputGroup(filename, scopeFiles, title)
     }
 
     /**
@@ -405,24 +544,31 @@ internal class Compiler(
         val file: FileDescriptorProtoWrapper,
         val kind: TypeKind,
         val localName: String,
+        val inScope: Boolean,
     )
 
     /**
-     * Fully-qualified type name → resolution metadata, across every file in the compile scope.
-     * Used to turn TYPE_MESSAGE / TYPE_ENUM field references into intra/inter-file links that
-     * land on the correct heading anchor (see [appendTypeReference]).  Map-entry synthetic
-     * messages are not indexed (they have no user-facing `### ` heading and fields that
-     * reference them render as plain text leaf names).
+     * Fully-qualified type name → resolution metadata, across every file in
+     * `request.protoFiles` (every entry protoc carried into the request, transitive
+     * dependencies included).  Entries from files outside `filesToGenerate` carry
+     * [TypeRef.inScope] = `false` so the resolver downstream can apply the
+     * [ProtocGenMarkdown.Options.transitiveReferences] policy.  Map-entry synthetic messages
+     * are not indexed (they have no user-facing `### ` heading).  On a same-FQN collision the
+     * in-scope entry wins so a type that genuinely lives in `filesToGenerate` can never be
+     * shadowed by an identically-named entry from a transitive file (a proto-validity bug,
+     * but guarded defensively).
      */
     private val typeIndex: Map<String, TypeRef> by lazy {
         val map = mutableMapOf<String, TypeRef>()
-        for (file in scopeFiles) {
+        val toGenerate = request.filesToGenerate.toSet()
+        for (file in request.protoFiles) {
+            val inScope = file.name in toGenerate
             val pkg = file.`package`?.value
             val pkgPrefix = if (pkg.isNullOrEmpty()) "" else "$pkg."
-            for (m in file.messageTypes) indexMessage(m, pkgPrefix, "", file, map)
+            for (m in file.messageTypes) indexMessage(m, pkgPrefix, "", file, inScope, map)
             for (e in file.enumTypes) {
                 val ename = e.name?.value ?: continue
-                map["$pkgPrefix$ename"] = TypeRef(file, TypeKind.ENUM, ename)
+                putTypeRef(map, "$pkgPrefix$ename", TypeRef(file, TypeKind.ENUM, ename, inScope))
             }
         }
         map
@@ -433,18 +579,30 @@ internal class Compiler(
         pkgPrefix: String,
         localPrefix: String,
         file: FileDescriptorProtoWrapper,
+        inScope: Boolean,
         map: MutableMap<String, TypeRef>,
     ) {
         if (msg.options?.mapEntry?.value == true) return
         val name = msg.name?.value ?: return
         val localName = "$localPrefix$name"
-        map["$pkgPrefix$localName"] = TypeRef(file, TypeKind.MESSAGE, localName)
+        putTypeRef(map, "$pkgPrefix$localName", TypeRef(file, TypeKind.MESSAGE, localName, inScope))
         val childLocal = "$localName."
-        for (n in msg.nestedTypes) indexMessage(n, pkgPrefix, childLocal, file, map)
+        for (n in msg.nestedTypes) indexMessage(n, pkgPrefix, childLocal, file, inScope, map)
         for (e in msg.enumTypes) {
             val ename = e.name?.value ?: continue
             val enumLocal = "$childLocal$ename"
-            map["$pkgPrefix$enumLocal"] = TypeRef(file, TypeKind.ENUM, enumLocal)
+            putTypeRef(map, "$pkgPrefix$enumLocal", TypeRef(file, TypeKind.ENUM, enumLocal, inScope))
+        }
+    }
+
+    private fun putTypeRef(
+        map: MutableMap<String, TypeRef>,
+        key: String,
+        ref: TypeRef,
+    ) {
+        val existing = map[key]
+        if (existing == null || (!existing.inScope && ref.inScope)) {
+            map[key] = ref
         }
     }
 
@@ -455,8 +613,10 @@ internal class Compiler(
             if (options.resolveReferenceLinksMode != ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE) {
                 ReferenceLinkResolver(
                     scopeFiles = scopeFiles,
+                    peerFiles = peerFileToGroup.keys.toList(),
                     options = options,
                     fileToGroup = fileToGroup,
+                    peerFileToGroup = peerFileToGroup,
                     mode = options.resolveReferenceLinksMode,
                     hrefFor = { file, path -> hrefFor(file, path, group.filename) },
                 )
@@ -544,6 +704,50 @@ internal class Compiler(
         val currentMd = group.filename
         for (body in bodies) outer.appendChild(packageIndexFileItem(body, currentMd))
         if (outer.firstChild != null) doc.appendChild(outer)
+
+        appendInsertionPoint(doc, "file_footer")
+        return doc
+    }
+
+    /**
+     * Render the navigation-only `overview.md` for [overviewGroup].  Frontmatter + an H1
+     * (`# Overview` or `# Overview: <longest-common-package-prefix>`, matching
+     * [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE]'s title shape) + a thematic break + a
+     * flat bulleted list of `[<package>](<relative-link-to-pkg-md>)` entries, one per distinct
+     * proto package in [scopeFiles], sorted alphabetically by dotted name.  The link target is
+     * the filename [packageGroup] produces — under `PER_FILE` that's the package index this
+     * overview is the parent of, under `PER_PACKAGE` it's the consolidated package document
+     * itself.  The empty package collapses to a single `(no package)` entry pointing at
+     * `default.md`.
+     */
+    private fun overviewDocument(group: OutputGroup): Document {
+        val doc = Document()
+        doc.appendChild(frontmatterBlock())
+        val titlePath = listOf(group.title)
+        doc.appendChild(
+            Heading().apply {
+                level = 1
+                if (options.generateStableAnchors) appendChild(htmlInline("<a id=\"${pathAnchor(titlePath)}\"></a>"))
+                appendChild(Text(group.title))
+            },
+        )
+        appendInsertionPoint(doc, "file_header")
+
+        val byPkg = sortedMapOf<String, MutableList<FileDescriptorProtoWrapper>>()
+        for (f in scopeFiles) byPkg.getOrPut(f.`package`?.value.orEmpty()) { mutableListOf() } += f
+
+        if (byPkg.isNotEmpty()) doc.appendChild(ThematicBreak())
+
+        val list = BulletList()
+        val currentMd = group.filename
+        for ((pkg, pkgFiles) in byPkg) {
+            val pkgGroup = packageGroup(pkg, pkgFiles)
+            val display = if (pkg.isEmpty()) "(no package)" else pkg
+            val href = relativeLink(currentMd, pkgGroup.filename)
+            val link = Link(href, null).apply { appendChild(Text(display)) }
+            list.appendChild(ListItem().apply { appendChild(Paragraph().apply { appendChild(link) }) })
+        }
+        if (list.firstChild != null) doc.appendChild(list)
 
         appendInsertionPoint(doc, "file_footer")
         return doc
@@ -946,7 +1150,7 @@ internal class Compiler(
             "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null"),
             "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null"),
             "outputType" to options.outputType.name,
-            "includePackageIndices" to options.includePackageIndices.toString(),
+            "includeIndices" to options.includeIndices.toString(),
             "typeSortMode" to options.typeSortMode.name,
             "fileSortMode" to options.fileSortMode.name,
             "rpcSortMode" to options.rpcSortMode.name,
@@ -1157,7 +1361,8 @@ internal class Compiler(
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(field.name?.value ?: "(unnamed)")) })
             row.appendChild(typeCell(field, currentMd))
-            val (cell, needsExpansion) = descriptionCell(field, sci, detailsPath)
+            val fname = field.name?.value ?: "(unnamed)"
+            val (cell, needsExpansion) = descriptionCell(field, sci, "$msgFqn.$fname", detailsPath)
             row.appendChild(cell)
             perField += field to needsExpansion
             body.appendChild(row)
@@ -1208,7 +1413,7 @@ internal class Compiler(
      * `null`/empty FQN renders as `?`.
      *
      * When the target's [OutputGroup] is consolidated and shares its filename with [currentMd]
-     * — which always happens in [ProtocGenMarkdown.Options.OutputType.PER_SESSION] and happens
+     * — which always happens in [ProtocGenMarkdown.Options.OutputType.SINGLE_FILE] and happens
      * for same-package references in [ProtocGenMarkdown.Options.OutputType.PER_PACKAGE] — the
      * link collapses to a bare `#anchor` instead of `self.md#anchor`.  Same-file references in
      * [ProtocGenMarkdown.Options.OutputType.PER_FILE] keep the existing `<file>.md#anchor`
@@ -1235,22 +1440,44 @@ internal class Compiler(
         }
         val leaf = cleaned.substringAfterLast('.').ifEmpty { "?" }
         val target = typeIndex[cleaned]
-        if (target != null) {
-            val section = if (target.kind == TypeKind.MESSAGE) "Messages" else "Enums"
-            val targetGroup = fileToGroup[target.file]!!
-            val targetHeadingPath =
-                if (targetGroup.consolidated) {
-                    listOf(targetGroup.title, titleOf(target.file), section, target.localName)
-                } else {
-                    listOf(targetGroup.title, section, target.localName)
-                }
-            val href = hrefFor(target.file, targetHeadingPath, currentMd)
-            val link = Link(href, null)
-            link.appendChild(Text(leaf))
-            cell.appendChild(link)
-        } else {
+        if (target == null) {
             cell.appendChild(Text(leaf))
+            return
         }
+        if (!target.inScope &&
+            options.transitiveReferences == ProtocGenMarkdown.Options.TransitiveReferences.NONE
+        ) {
+            cell.appendChild(Text(leaf))
+            return
+        }
+        val targetGroup = fileToGroup[target.file] ?: peerFileToGroup[target.file]
+        if (targetGroup == null) {
+            // INCLUDE_FILES closure didn't reach this file, or LINK_AS_PEER's peer map missed
+            // it (e.g., type referenced only from a transitive file the closure didn't pull
+            // in).  Fall through to plain text rather than emit a broken link.
+            cell.appendChild(Text(leaf))
+            return
+        }
+        val section = if (target.kind == TypeKind.MESSAGE) "Messages" else "Enums"
+        val isPeer = !target.inScope
+        val targetHeadingPath =
+            when {
+                isPeer ->
+                    // Peer is assumed to render under PER_FILE conventions regardless of this
+                    // run's outputType: the heading path is the per-file H1 title, the
+                    // Messages/Enums section, and the dotted local name.
+                    listOf(targetGroup.title, section, target.localName)
+
+                targetGroup.consolidated ->
+                    listOf(targetGroup.title, titleOf(target.file), section, target.localName)
+
+                else ->
+                    listOf(targetGroup.title, section, target.localName)
+            }
+        val href = hrefFor(target.file, targetHeadingPath, currentMd)
+        val link = Link(href, null)
+        link.appendChild(Text(leaf))
+        cell.appendChild(link)
     }
 
     /**
@@ -1270,7 +1497,7 @@ internal class Compiler(
         currentMd: String,
     ): String {
         val anchor = anchorFor(targetHeadingPath)
-        val targetGroup = fileToGroup[targetFile]!!
+        val targetGroup = fileToGroup[targetFile] ?: peerFileToGroup[targetFile]!!
         return if (targetGroup.consolidated && targetGroup.filename == currentMd) {
             "#$anchor"
         } else {
@@ -1303,7 +1530,8 @@ internal class Compiler(
             row.appendChild(TableCell().apply { appendChild(Text(method.name?.value ?: "(unnamed)")) })
             row.appendChild(rpcTypeCell(method.inputType?.value, method.clientStreaming?.value == true, currentMd))
             row.appendChild(rpcTypeCell(method.outputType?.value, method.serverStreaming?.value == true, currentMd))
-            val (cell, needsExpansion) = summaryDescriptionCell(sci, method, method.name?.value ?: "(unnamed)", detailsPath)
+            val mname = method.name?.value ?: "(unnamed)"
+            val (cell, needsExpansion) = summaryDescriptionCell(sci, method, "$serviceFqn.$mname", mname, detailsPath)
             row.appendChild(cell)
             perMethod += method to needsExpansion
             body.appendChild(row)
@@ -1354,7 +1582,7 @@ internal class Compiler(
             val row = TableRow()
             row.appendChild(TableCell().apply { appendChild(Text(vname)) })
             row.appendChild(TableCell().apply { appendChild(Text(value.number?.value?.toString() ?: "?")) })
-            val (cell, needsExpansion) = summaryDescriptionCell(sci, value, vname, detailsPath)
+            val (cell, needsExpansion) = summaryDescriptionCell(sci, value, "$enumFqn.$vname", vname, detailsPath)
             row.appendChild(cell)
             perValue += value to needsExpansion
             body.appendChild(row)
@@ -1387,8 +1615,9 @@ internal class Compiler(
     private fun descriptionCell(
         field: FieldDescriptorProtoWrapper,
         sci: SourceCodeInfoWrapper?,
+        scopeFqn: String,
         detailsPath: List<String>,
-    ): Pair<TableCell, Boolean> = summaryDescriptionCell(sci, field, field.name?.value ?: "(unnamed)", detailsPath)
+    ): Pair<TableCell, Boolean> = summaryDescriptionCell(sci, field, scopeFqn, field.name?.value ?: "(unnamed)", detailsPath)
 
     /**
      * Shared first-paragraph-only description cell for summary tables (Field Summary, RPC Summary).
@@ -1403,6 +1632,7 @@ internal class Compiler(
     private fun summaryDescriptionCell(
         sci: SourceCodeInfoWrapper?,
         locatable: Locatable,
+        scopeFqn: String,
         elementName: String,
         detailsPath: List<String>,
     ): Pair<TableCell, Boolean> {
@@ -1410,6 +1640,7 @@ internal class Compiler(
         val raw = sci?.findLocation(locatable)?.leadingComments?.cleaned
         if (raw.isNullOrBlank()) return cell to false
         val parsed = parser.parse(raw)
+        currentResolver?.rewrite(parsed, scopeFqn)
         val firstBlock = parsed.firstChild ?: return cell to false
         val needsExpansion = firstBlock !is Paragraph || firstBlock.next != null
         if (firstBlock is Paragraph) {

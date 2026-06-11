@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.outputtypesinglefile.beta;
+
+import "engine/protoc/markdown/example/outputtypesinglefile/alpha/alpha.proto";
+
+option java_package = "com.engine.protoc.markdown.example.outputtypesinglefile.beta";
+option java_multiple_files = true;
+
+// The "beta" half of the single-file example.
+//
+// References `Alpha` across packages; in SINGLE_FILE mode both files end up in the same
+// consolidated `.md`, so the type-cell link collapses to a bare `#anchor` self-link.
+
+message Beta {
+    engine.protoc.markdown.example.outputtypesinglefile.alpha.Alpha origin = 1;
+    string note = 2;
+}

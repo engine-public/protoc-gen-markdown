@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.transitivereferencesincludefiles;
+
+option java_package = "com.engine.protoc.markdown.example.transitivereferencesincludefiles";
+option java_multiple_files = true;
+
+import "engine/protoc/markdown/example/transitivereferencesshared/core.proto";
+
+// Exercises transitiveReferences=INCLUDE_FILES — references to [CoreEntity] and
+// [CoreStatus] resolve to the transitive `core.proto`, and that file is promoted into the
+// generated output set, so `core.md` is emitted alongside this suite's `consumer.md` and
+// every link resolves to actual content this run wrote.
+message Consumer {
+    // The entity this consumer wraps; see [CoreEntity].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreEntity entity = 1;
+    // Lifecycle status; see [CoreStatus].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreStatus status = 2;
+}

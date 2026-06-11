@@ -60,7 +60,7 @@ public class ProtocGenMarkdown(
          *    parser.  Injected content becomes additional top-level YAML keys; the plugin's own
          *    keys carry a `protoc-gen-markdown-` namespace prefix to avoid collisions.
          *  - `file_header` — directly after the L1 group title.  Emitted only in the consolidated
-         *    [OutputType.PER_PACKAGE] / [OutputType.PER_SESSION] modes where the L1 is the
+         *    [OutputType.PER_PACKAGE] / [OutputType.SINGLE_FILE] modes where the L1 is the
          *    package or session title, not a file; in [OutputType.PER_FILE] the L1 IS the file
          *    heading and the keyed `file_header_scope:<file>` covers the same spot instead.
          *  - `file_header_scope:<file>` — directly after each file's heading (the L1 in
@@ -148,7 +148,7 @@ public class ProtocGenMarkdown(
          *    consolidated file is dropped at `<pkg-as-dir>/package.md`.  Otherwise it is dropped
          *    at the output root with the name `<fully.qualified.package>.md`.  Files declaring
          *    no `package` directive group under the title `(no package)` at `default.md`.
-         *  - [OutputType.PER_SESSION] — every input file in the compile request is consolidated
+         *  - [OutputType.SINGLE_FILE] — every input file in the compile request is consolidated
          *    into a single `.md` at the output root.  The L1 heading is the longest common
          *    package prefix shared across all files in the session (e.g. `foo.bar` for files
          *    declaring `foo.bar.baz` and `foo.bar.qux`), or the literal `overview` when there is
@@ -169,36 +169,47 @@ public class ProtocGenMarkdown(
          */
         public val outputType: OutputType,
         /**
-         * When `true` and [outputType] is [OutputType.PER_FILE], the compiler emits one extra
-         * `.md` per distinct proto `package` declared across the compile-scope files — a
-         * navigation-only index whose body is a bulleted Table of Contents listing every file,
-         * section (`Services` / `Messages` / `Enums`), type, and member in that package, with
-         * each entry hyperlinked to the corresponding heading anchor inside the per-file `.md`s.
+         * Controls whether the compiler emits navigation-only aggregator documents alongside the
+         * primary per-`outputType` output set.  Two layers of aggregation, both gated by this
+         * single switch:
          *
-         * The index filename mirrors [OutputType.PER_PACKAGE]'s rules so the index sits where a
-         * consolidated package document would have sat: `<pkg-as-dir>/package.md` when every
-         * file declaring the package lives at the directory whose path is the package name with
-         * `.` → `/`, otherwise `<fully.qualified.package>.md` at the output root.  Files with no
-         * `package` directive collapse into a single `default.md` index titled `(no package)`.
-         * When an index's computed filename collides with a per-file `.md` (e.g. a proto literally
-         * named `<pkg-as-dir>/package.proto`), the index for that package is skipped and a
-         * warning is logged.
+         *  - **Package indices** — under [OutputType.PER_FILE] only, one extra `.md` per distinct
+         *    proto `package` declared across the compile-scope files, titled `# <dotted
+         *    package>` (or `# Default Package` for files with no `package` directive).  Body
+         *    is a bulleted Table of Contents listing every file, section (`Services` /
+         *    `Messages` / `Enums`), type, and member in that package, each entry hyperlinked to
+         *    the corresponding heading anchor inside the per-file `.md`s.  The index filename
+         *    mirrors [OutputType.PER_PACKAGE]'s rules so it sits where a consolidated package
+         *    document would have sat: `<pkg-as-dir>/package.md` when every file declaring the
+         *    package lives at the directory whose path is the package name with `.` → `/`,
+         *    otherwise `<fully.qualified.package>.md` at the output root.  Files with no
+         *    `package` directive collapse into a single `default.md` index.  Cross-file links
+         *    honor [generateStableAnchors]; member entry paths mirror the per-file Details
+         *    headings so each link lands on the same heading the in-file `[...](#…)` expansion
+         *    targets.  Sort order matches the per-file documents (driven by [fileSortMode] /
+         *    [typeSortMode] / [rpcSortMode] / [fieldSortMode] / [enumValueSortMode]).  Under
+         *    [OutputType.PER_PACKAGE] no package indices are emitted — each package's
+         *    consolidated `.md` already plays the indexing role.
          *
-         * Cross-file links honor [generateStableAnchors] the same way summary-table type cells
-         * do: path-based ids when on, leaf-text auto-anchors when off.  Member entry paths
-         * mirror the per-file Details headings (`Field Details` / `RPC Details` / `Value
-         * Details`) so the link lands on the same heading the in-file `[...](#…)` expansion
-         * lands on.  Sort order for files, types, RPCs, fields, and enum values matches the
-         * per-file documents (driven by [fileSortMode] / [typeSortMode] / [rpcSortMode] /
-         * [fieldSortMode] / [enumValueSortMode]).
+         *  - **Overview** — under [OutputType.PER_FILE] and [OutputType.PER_PACKAGE], a single
+         *    `overview.md` at the output root with `# Overview` (or `# <longest common
+         *    package prefix>` when one exists) whose body is a flat bulleted list of every
+         *    package, each entry linked to the package's primary `.md` (the package index under
+         *    `PER_FILE`; the consolidated package document under `PER_PACKAGE`).  Acts as the
+         *    parent of the package indices under `PER_FILE`, and as the equivalent navigation
+         *    hub under `PER_PACKAGE` where each package is itself a single document.
          *
-         * No-op under [OutputType.PER_PACKAGE] / [OutputType.PER_SESSION]: those modes already
-         * produce one consolidated document per package or session, so an additional index file
-         * would be redundant.
+         * When the filename `overview.md` collides with a per-file or per-package output, the
+         * overview is skipped with a warning so the user's content wins (same strategy as the
+         * package-index collision guard).
+         *
+         * Under [OutputType.SINGLE_FILE] this option is a no-op: the single consolidated `.md`
+         * is itself the aggregator.  When set to `true` together with `SINGLE_FILE`, an INFO
+         * log line records that the option had no effect.
          *
          * Default `true`.
          */
-        public val includePackageIndices: Boolean,
+        public val includeIndices: Boolean,
         /**
          * Threshold at which the plugin emits log records via SLF4J.  Accepts any value of
          * [org.slf4j.event.Level] (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`); a record is
@@ -243,7 +254,7 @@ public class ProtocGenMarkdown(
         public val typeSortMode: SortMode,
         /**
          * Sort order for the per-file L2 sub-sections inside a consolidated
-         * [OutputType.PER_PACKAGE] or [OutputType.PER_SESSION] document.
+         * [OutputType.PER_PACKAGE] or [OutputType.SINGLE_FILE] document.
          *
          *  - [SortMode.ALPHABETICAL] (default) — files sort by their full relative path
          *    (`file.name`, e.g. `foo/bar/baz.proto`).
@@ -331,10 +342,45 @@ public class ProtocGenMarkdown(
          * names (case-insensitive) when provided via the parameter string.
          */
         public val resolveReferenceLinksMode: ResolveReferenceLinksMode,
+        /**
+         * Controls how references — both field-type cells in summary tables and
+         * `[label]` shortcut-references inside proto leading comments — are handled when the
+         * target message or enum lives in a *transitive* `.proto` file: one that the
+         * `CodeGeneratorRequest` includes (because some `filesToGenerate` file imports it) but
+         * which protoc did not ask this plugin to generate output for.
+         *
+         *  - [TransitiveReferences.NONE] — transitive types are treated as unknown.  Field-type
+         *    cells render the leaf name as plain text; comment `[label]` references resolve as
+         *    if the type did not exist, which (depending on [resolveReferenceLinksMode]) leaves
+         *    the literal `[name]` in place, logs a `warn`, or fails the build.
+         *  - [TransitiveReferences.LINK_AS_PEER] (default) — transitive types are linked as if
+         *    the consumer ran this same plugin (with the same [outputType], [generateStableAnchors],
+         *    etc.) on the transitive `.proto` files in a *parallel* protoc invocation that landed
+         *    its output alongside this one.  The href follows the same `<path>.md#<anchor>`
+         *    convention that an intra-scope cross-file link uses, but no peer `.md` is emitted by
+         *    *this* run — the link will only resolve at view time when the peer documents exist
+         *    on disk.  Best fit for monorepo workflows that document each proto package in its
+         *    own `:gen` task but render the resulting markdown into one shared output tree.
+         *  - [TransitiveReferences.INCLUDE_FILES] — every transitive `.proto` file referenced by
+         *    at least one in-scope type is promoted into the generated output set, exactly as if
+         *    it had appeared in `filesToGenerate`.  The resulting bundle is self-contained: every
+         *    field-type link and every successfully-resolved comment reference points at content
+         *    this run actually emitted.  Output set grows transparently with the dependency
+         *    closure; under the consolidated [OutputType.PER_PACKAGE] / [OutputType.SINGLE_FILE]
+         *    modes this can pull in additional packages / inflate the session title accordingly.
+         *
+         * Well-known protos (`google.protobuf.*`) are stripped from the request by protoc, so
+         * neither mode can link them — they always render as plain text regardless of this
+         * setting.
+         *
+         * Default [TransitiveReferences.LINK_AS_PEER].  Must parse as one of the enum names
+         * (case-insensitive) when provided via the parameter string.
+         */
+        public val transitiveReferences: TransitiveReferences,
     ) {
 
         /** Output-file shape selected by [Options.outputType]. */
-        public enum class OutputType { PER_FILE, PER_PACKAGE, PER_SESSION }
+        public enum class OutputType { PER_FILE, PER_PACKAGE, SINGLE_FILE }
 
         /**
          * Two-value sort order shared by [Options.typeSortMode], [Options.fileSortMode], and
@@ -357,6 +403,14 @@ public class ProtocGenMarkdown(
          */
         public enum class ResolveReferenceLinksMode { NONE, WARN, FAIL_ON_INVALID }
 
+        /**
+         * Behavior selected by [Options.transitiveReferences] for messages and enums that live in
+         * `.proto` files which the request pulled in as transitive dependencies of
+         * `filesToGenerate` but did not itself ask the plugin to render.  See the property's
+         * KDoc for the full semantics of each value.
+         */
+        public enum class TransitiveReferences { NONE, LINK_AS_PEER, INCLUDE_FILES }
+
         public class Builder private constructor(parameters: Parameters) {
 
             public var generateStableAnchors: Boolean = parameters.get<Boolean>("generateStableAnchors") ?: true
@@ -369,7 +423,7 @@ public class ProtocGenMarkdown(
 
             public var outputType: OutputType = parameters.get<OutputType>("outputType") ?: OutputType.PER_FILE
 
-            public var includePackageIndices: Boolean = parameters.get<Boolean>("includePackageIndices") ?: true
+            public var includeIndices: Boolean = parameters.get<Boolean>("includeIndices") ?: true
 
             public var logLevel: Level = parameters.get<Level>("logLevel") ?: Level.ERROR
 
@@ -388,6 +442,9 @@ public class ProtocGenMarkdown(
             public var resolveReferenceLinksMode: ResolveReferenceLinksMode =
                 parameters.get<ResolveReferenceLinksMode>("resolveReferenceLinksMode") ?: ResolveReferenceLinksMode.FAIL_ON_INVALID
 
+            public var transitiveReferences: TransitiveReferences =
+                parameters.get<TransitiveReferences>("transitiveReferences") ?: TransitiveReferences.LINK_AS_PEER
+
             public companion object {
                 public fun from(parameters: Parameters): Builder = Builder(parameters)
             }
@@ -399,7 +456,7 @@ public class ProtocGenMarkdown(
                     minTableOfContentsHeader = minTableOfContentsHeader,
                     maxTableOfContentsHeader = maxTableOfContentsHeader,
                     outputType = outputType,
-                    includePackageIndices = includePackageIndices,
+                    includeIndices = includeIndices,
                     logLevel = logLevel,
                     logFile = logFile,
                     typeSortMode = typeSortMode,
@@ -408,6 +465,7 @@ public class ProtocGenMarkdown(
                     fieldSortMode = fieldSortMode,
                     enumValueSortMode = enumValueSortMode,
                     resolveReferenceLinksMode = resolveReferenceLinksMode,
+                    transitiveReferences = transitiveReferences,
                 )
         }
     }

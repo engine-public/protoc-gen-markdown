@@ -43,8 +43,10 @@ private val log = LoggerFactory.getLogger(ReferenceLinkResolver::class.java)
  */
 internal class ReferenceLinkResolver(
     scopeFiles: List<FileDescriptorProtoWrapper>,
+    peerFiles: List<FileDescriptorProtoWrapper>,
     options: ProtocGenMarkdown.Options,
     fileToGroup: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
+    peerFileToGroup: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
     private val mode: ProtocGenMarkdown.Options.ResolveReferenceLinksMode,
     private val hrefFor: (FileDescriptorProtoWrapper, List<String>) -> String,
 ) {
@@ -93,11 +95,24 @@ internal class ReferenceLinkResolver(
     private val collectedFailures = mutableListOf<Failure>()
 
     init {
-        val consolidated = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE
-        for (file in scopeFiles) {
+        val consolidatedScope = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE
+        indexFileSet(scopeFiles, consolidatedScope, fileToGroup)
+        // Peer files are assumed to be rendered by a sibling protoc run under PER_FILE
+        // conventions; their heading paths drop the per-file H2 layer regardless of this
+        // run's outputType, matching what `Compiler.appendTypeReference` does for transitive
+        // field-type targets.
+        indexFileSet(peerFiles, consolidated = false, peerFileToGroup)
+    }
+
+    private fun indexFileSet(
+        files: List<FileDescriptorProtoWrapper>,
+        consolidated: Boolean,
+        groupOfFile: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
+    ) {
+        for (file in files) {
             val pkg = file.`package`?.value.orEmpty()
             val pkgPrefix = if (pkg.isEmpty()) "" else "$pkg."
-            val group = fileToGroup[file] ?: continue
+            val group = groupOfFile[file] ?: continue
             val groupTitle = group.title
             val fileTitle = file.name ?: "(unnamed)"
             val protoFile = file.name ?: "(unnamed)"

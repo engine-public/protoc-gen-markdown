@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.transitivereferencesnone;
+
+option java_package = "com.engine.protoc.markdown.example.transitivereferencesnone";
+option java_multiple_files = true;
+
+import "engine/protoc/markdown/example/transitivereferencesshared/core.proto";
+
+// Exercises transitiveReferences=NONE — a reference to [CoreEntity], which lives in the
+// transitive-only `core.proto`, renders as plain text in the type column and the bracketed
+// `[CoreEntity]` reference in this comment fails to resolve.
+message Consumer {
+    // The entity this consumer wraps; see [CoreEntity].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreEntity entity = 1;
+    // Lifecycle status; see [CoreStatus].
+    engine.protoc.markdown.example.transitivereferencesshared.CoreStatus status = 2;
+}
