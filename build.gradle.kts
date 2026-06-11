@@ -142,6 +142,11 @@ allprojects {
 
     repositories {
         mavenCentral()
+        mavenLocal {
+            content {
+                includeGroup("com.engine")
+            }
+        }
     }
 
     configurations.named("ktlint").configure {

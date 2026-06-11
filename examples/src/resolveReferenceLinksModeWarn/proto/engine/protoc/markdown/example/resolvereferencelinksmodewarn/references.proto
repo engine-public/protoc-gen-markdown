@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.resolvereferencelinksmodewarn;
+
+option java_package = "com.engine.protoc.markdown.example.resolvereferencelinksmodewarn";
+option java_multiple_files = true;
+
+// Exercises resolveReferenceLinksMode=WARN — a shortcut reference that doesn't resolve
+// (`[Missing]` below) is left literal and a warning is logged, but the compile still
+// succeeds.  Under the default FAIL_ON_INVALID the same content renders identically but
+// `CodeGeneratorResponse.error` would be set so protoc fails the run.
+message ReferencedType {
+    string label = 1;
+}
+
+// See [ReferencedType] for the shape of the entry this message wraps; also mentions
+// [Missing] which does NOT exist in scope and stays literal under WARN.
+message Wrapper {
+    // The wrapped [ReferencedType] instance.
+    ReferencedType inner = 1;
+}

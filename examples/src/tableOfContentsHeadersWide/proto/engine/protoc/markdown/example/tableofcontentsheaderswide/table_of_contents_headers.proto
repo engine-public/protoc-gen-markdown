@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.tableofcontentsheaderswide;
+
+option java_package = "com.engine.protoc.markdown.example.tableofcontentsheaderswide";
+option java_multiple_files = true;
+
+// Exercises minTableOfContentsHeader=1,maxTableOfContentsHeader=5 — every heading the
+// compiler emits lands in the inline Table of Contents.  The default range `[2, 3]`
+// covers only Services / Messages / Enums (h2) and their named children (h3); with
+// this suite's full range the TOC also includes the L1 file-path title, the L4
+// Field/RPC/Value Summary + Details headers, and every individual L5
+// field/RPC/value-expansion heading.
+
+service Echo {
+    rpc Send (Payload) returns (Payload);
+}
+
+message Payload {
+    string body = 1;
+}
+
+enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+}
