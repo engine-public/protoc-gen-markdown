@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.referencelink;
+
+import "engine/protoc/markdown/example/transitivereferencesshared/core.proto";
+
+option java_package = "com.engine.protoc.markdown.example.referencelink";
+option java_multiple_files = true;
+
+// Exercises the `referenceLink` option at every site the override fires: bracketed labels
+// in proto leading comments, and field-type cells whose declared type FQN matches an
+// override key.  This suite supplies three overrides — `[ExternalSpec]` (a label that
+// exists nowhere in scope, given here as a scheme-stripped absolute URL
+// `example.com/docs/external-spec`; without the override the default FAIL_ON_INVALID
+// `resolveReferenceLinksMode` would fail the run), `[Wrapper]` (the in-scope message
+// below, given here as a site-relative path `/docs/override-wrapper`, which would
+// otherwise resolve to its own heading), and the transitive-only type
+// `engine.protoc.markdown.example.transitivereferencesshared.CoreEntity` (matched against
+// the `core` field's declared type FQN, pointing at `example.com/docs/core-entity`); all
+// three render with the override URLs regardless of what the resolver would otherwise
+// find.  The `core` field also demonstrates the side effect: without the override the
+// default `transitiveReferences=LINK_AS_PEER` would add the shared `core.proto` as a
+// peer file, but the FQN override suppresses that promotion so no peer document is
+// produced for this suite.  See [ExternalSpec] and [Wrapper] in the rendered output.
+message Wrapper {
+    // Free-form label; see [Wrapper] for context on the surrounding message.
+    string name = 1;
+    // The transitive type whose field-type cell points at the override URL.
+    engine.protoc.markdown.example.transitivereferencesshared.CoreEntity core = 2;
+}

@@ -40,6 +40,29 @@ val suiteRecorderOptions =
         "transitiveReferencesNone" to listOf("transitiveReferences=NONE"),
         "transitiveReferencesLinkAsPeer" to listOf("transitiveReferences=LINK_AS_PEER"),
         "transitiveReferencesIncludeFiles" to listOf("transitiveReferences=INCLUDE_FILES"),
+        "referenceLink" to listOf(
+            "referenceLink=ExternalSpec=/docs/external-spec",
+            "referenceLink=Wrapper=/docs/override-wrapper",
+            "referenceLink=engine.protoc.markdown.example.transitivereferencesshared.CoreEntity=example.com/docs/core-entity",
+        ),
+        /*
+         * Default options.  Exercises three reference-link syntax paths that the resolver
+         * recognizes alongside the canonical `[label]` shortcut:
+         *  - the full reference form `[display text][label]`, where the bracketed label is
+         *    the lookup key and the display text passes through unchanged;
+         *  - CommonMark escaped brackets (`\[...\]`), which the parser treats as literal
+         *    text and the resolver never sees;
+         *  - field-scope bare-name resolution against the field's declared target type, so
+         *    `[TargetType]` in a comment on a field of that type resolves locally even when
+         *    another type with the same short name exists in the global compile scope.
+         *
+         * One `referenceLink` override exists so the full-form label `[google.rpc.Status]`
+         * can resolve from a comment without `google.rpc.*` being in the compile scope —
+         * matching what real-world `referenceLink` consumers do for external proto types.
+         */
+        "referenceLinkSyntax" to listOf(
+            "referenceLink=google.rpc.Status=example.com/docs/google.rpc.Status",
+        ),
     )
 
 /*
@@ -138,8 +161,8 @@ protobuf {
              * source sets aren't in `suiteRecorderOptions`, so they short-circuit above.
              */
             if (name == "generate${suiteName.capitalized()}Proto") {
-                if (suiteName.startsWith("transitiveReferences") &&
-                    suiteName != "transitiveReferencesShared"
+                if ((suiteName.startsWith("transitiveReferences") && suiteName != "transitiveReferencesShared") ||
+                    suiteName == "referenceLink"
                 ) {
                     /*
                      * Add the shared transitive `core.proto` to protoc's include path

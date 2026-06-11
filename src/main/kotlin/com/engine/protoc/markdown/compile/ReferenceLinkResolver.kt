@@ -4,26 +4,37 @@ import com.engine.protoc.markdown.ProtocGenMarkdown
 import com.engine.protoc.util.enums.EnumDescriptorProtoWrapper
 import com.engine.protoc.util.file.FileDescriptorProtoWrapper
 import com.engine.protoc.util.message.DescriptorProtoWrapper
-import org.commonmark.node.AbstractVisitor
 import org.commonmark.node.Link
-import org.commonmark.node.Node
-import org.commonmark.node.Text
+import org.commonmark.parser.beta.LinkInfo
+import org.commonmark.parser.beta.LinkProcessor
+import org.commonmark.parser.beta.LinkResult
+import org.commonmark.parser.beta.Scanner
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger(ReferenceLinkResolver::class.java)
 
 /**
- * Resolves CommonMark shortcut-reference syntax (`[label]`) inside proto leading comments to
- * Markdown links pointing at the heading anchors this generator already emits.  Constructed
- * once per output document so the href shape (bare `#anchor` vs `relative/path.md#anchor`)
- * is bound to that document's filename.
+ * Resolves CommonMark reference-link syntax inside proto leading comments to Markdown links
+ * pointing at the heading anchors this generator already emits.  Both the shortcut form
+ * (`[label]`) and the full form (`[display text][label]`) are recognized; in the full form
+ * the bracketed label is the lookup key and the display text passes through unchanged.
+ * Escaped brackets (`\[foo\]`) are honored — the parser never invokes the resolver for them,
+ * so they survive as literal text.  Inline links (`[text](url)`) are left to the core
+ * CommonMark processor.
+ *
+ * Constructed once per output document so the href shape (bare `#anchor` vs
+ * `relative/path.md#anchor`) is bound to that document's filename.  Hooked into the parser
+ * as a [LinkProcessor] (see [linkProcessor]); the per-comment anchor descriptor flows in
+ * through `currentScope` which the caller sets around each `parser.parse(...)` call.
  *
  * The resolver indexes every type, field, enum value, and RPC reachable from the compile
  * scope.  Bare-name lookups consult both a global short-name index and a per-scope local
- * index built from the comment's anchor descriptor (`scopeFqn`) — so a comment on
- * `message User` can write `[name]` to find `User.name` without the explicit qualifier.
- * Qualified labels (`[Outer.Inner]`, `[Message.field]`, `[Service.Method]`, …) match
- * directly against the qualified index.
+ * index built from the comment's anchor descriptor — so a comment on `message User` can
+ * write `[name]` to find `User.name` without the explicit qualifier, and a comment on a
+ * field of type `Foo` can write `[Foo]` to find that specific target type (disambiguating
+ * against any other `Foo` defined elsewhere in the scope).  Qualified labels
+ * (`[Outer.Inner]`, `[Message.field]`, `[Service.Method]`, …) match directly against the
+ * qualified index.
  *
  * Logging is reference-driven, not index-driven.  Key collisions during indexing — top-level
  * `Foo` plus nested `Outer.Foo` both registering the short key `Foo`, or two enums declaring
@@ -31,8 +42,8 @@ private val log = LoggerFactory.getLogger(ReferenceLinkResolver::class.java)
  * actually depends on the colliding key.  Per-occurrence access-time logging follows the
  * configured [mode]:
  *
- *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE] — nothing logged (and
- *    [rewrite] isn't called in this mode).
+ *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE] — nothing logged (and the
+ *    resolver isn't installed on the parser at all in this mode).
  *  - [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.WARN] — each ambiguous or
  *    unresolved comment reference logs at `warn` with the request site (proto file, comment
  *    scope, label) and the candidates / reason.
@@ -48,6 +59,7 @@ internal class ReferenceLinkResolver(
     fileToGroup: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
     peerFileToGroup: Map<FileDescriptorProtoWrapper, Compiler.OutputGroup>,
     private val mode: ProtocGenMarkdown.Options.ResolveReferenceLinksMode,
+    private val referenceLinkOverrides: Map<String, String>,
     private val hrefFor: (FileDescriptorProtoWrapper, List<String>) -> String,
 ) {
     /** Global qualified-name index — covers every dotted form of every type and member. */
@@ -92,7 +104,19 @@ internal class ReferenceLinkResolver(
     /** Any indexed FQN → the proto file it came from, for actionable failure messages. */
     private val fileByFqn = mutableMapOf<String, String>()
 
+    /** typeFqn → its heading-anchor href, used to add a field/RPC's declared target as a
+     *  bare-scope candidate by short name. */
+    private val typeHrefByFqn = mutableMapOf<String, String>()
+
     private val collectedFailures = mutableListOf<Failure>()
+
+    /**
+     * The descriptor FQN of the comment currently being parsed, set by the caller via
+     * [setCurrentScope] / [clearCurrentScope] around each `parser.parse(...)` invocation.
+     * The [LinkProcessor] reads this on every link encountered.  Empty string means
+     * "file scope" (no anchor descriptor).
+     */
+    private var currentScope: String = ""
 
     init {
         val consolidatedScope = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE
@@ -163,6 +187,7 @@ internal class ReferenceLinkResolver(
         val typePath = sectionPath + dotted
         val typeHref = hrefFor(file, typePath)
         fileByFqn[fqn] = protoFile
+        typeHrefByFqn[fqn] = typeHref
         globalShortTypes.put(short, typeHref, "message $fqn")
         qualified.put(dotted, typeHref, "message $fqn")
         qualified.put(fqn, typeHref, "message $fqn")
@@ -207,6 +232,7 @@ internal class ReferenceLinkResolver(
         val typePath = effectiveSection + dotted
         val typeHref = hrefFor(file, typePath)
         fileByFqn[fqn] = protoFile
+        typeHrefByFqn[fqn] = typeHref
         globalShortTypes.put(short, typeHref, "enum $fqn")
         qualified.put(dotted, typeHref, "enum $fqn")
         qualified.put(fqn, typeHref, "enum $fqn")
@@ -234,20 +260,43 @@ internal class ReferenceLinkResolver(
 
     /**
      * Resolve a bracketed [label] under the comment's [scopeFqn] (the FQN of the descriptor the
-     * comment is attached to, or `""` when no scope is known).
+     * comment is attached to, or `""` when no scope is known).  Resolution order:
+     *
+     *  1. [referenceLinkOverrides] — user-supplied URL takes precedence over everything.
+     *  2. Qualified lookup when the label contains a dot — `Outer.Inner`, `Message.field`, etc.
+     *  3. Bare-scope lookup — sibling members of the comment's anchor descriptor, plus the
+     *     anchor's declared type target when it has one (so `[Foo]` on a field of type `Foo`
+     *     resolves to that specific target).
+     *  4. Global short-name lookups against types, then enum values.
+     *
+     * Returns `Outcome.Resolved` as soon as a step produces one.  If no step produces
+     * Resolved but at least one produces `Outcome.Ambiguous`, the first Ambiguous wins —
+     * caller surfaces it as an Ambiguous failure with candidate list, rather than the
+     * misleading Unresolved that would result from dropping ambiguity on the floor.
      */
     fun resolve(
         label: String,
         scopeFqn: String,
     ): Outcome {
         if (label.isEmpty()) return Outcome.Unresolved
+        referenceLinkOverrides[label]?.let { return Outcome.Resolved(it) }
         if ('.' in label) {
             return qualified.lookup(label)
         }
-        bareScopeOutcome(label, scopeFqn)?.let { return it }
-        globalShortTypes.lookup(label).let { if (it is Outcome.Resolved) return it }
-        globalShortEnumValues.lookup(label).let { if (it is Outcome.Resolved) return it }
-        return Outcome.Unresolved
+        var ambiguous: Outcome.Ambiguous? = null
+        bareScopeOutcome(label, scopeFqn)?.let {
+            if (it is Outcome.Resolved) return it
+            if (it is Outcome.Ambiguous && ambiguous == null) ambiguous = it
+        }
+        globalShortTypes.lookup(label).let {
+            if (it is Outcome.Resolved) return it
+            if (it is Outcome.Ambiguous && ambiguous == null) ambiguous = it
+        }
+        globalShortEnumValues.lookup(label).let {
+            if (it is Outcome.Resolved) return it
+            if (it is Outcome.Ambiguous && ambiguous == null) ambiguous = it
+        }
+        return ambiguous ?: Outcome.Unresolved
     }
 
     private fun bareScopeOutcome(
@@ -282,6 +331,7 @@ internal class ReferenceLinkResolver(
             fieldsByMessage[parentMsg]?.let { sources += "sibling field in $parentMsg" to it }
             fieldTargetMessageOf[scopeFqn]?.let { target ->
                 fieldsByMessage[target]?.let { sources += "field of referenced type $target" to it }
+                addTypeAsSource(sources, "declared type of $scopeFqn", target)
             }
             return sources
         }
@@ -293,79 +343,99 @@ internal class ReferenceLinkResolver(
             rpcsByService[parentService]?.let { sources += "sibling rpc in $parentService" to it }
             rpcInputOf[scopeFqn]?.let { input ->
                 fieldsByMessage[input]?.let { sources += "field of input $input" to it }
+                addTypeAsSource(sources, "input type of $scopeFqn", input)
             }
             rpcOutputOf[scopeFqn]?.let { output ->
                 fieldsByMessage[output]?.let { sources += "field of output $output" to it }
+                addTypeAsSource(sources, "output type of $scopeFqn", output)
             }
             return sources
         }
         return null
     }
 
-    /**
-     * Walk the parsed CommonMark fragment [root] under the given [scopeFqn] and convert every
-     * resolvable `[label]` inside a [Text] node into a [Link].  Unresolved labels stay literal;
-     * ambiguous labels resolve to one of the candidates (the rewrite still proceeds).  Both
-     * outcomes funnel through [reportFailure] so the [mode]-driven log line fires and, under
-     * [ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID], the [Failure] is
-     * collected for the caller to surface at end-of-compile.
-     */
-    fun rewrite(
-        root: Node,
-        scopeFqn: String,
+    /** Add `typeFqn`'s heading anchor as a bare-scope candidate, keyed by the type's short
+     *  (last-segment) name.  No-op when the type isn't indexed — out-of-scope types skip
+     *  silently rather than poisoning the candidate set with a missing href. */
+    private fun addTypeAsSource(
+        sources: MutableList<Pair<String, Map<String, String>>>,
+        sourceLabel: String,
+        typeFqn: String,
     ) {
-        val pending = mutableListOf<Text>()
-        root.accept(
-            object : AbstractVisitor() {
-                override fun visit(text: Text) {
-                    if (text.parent is Link) return
-                    if ('[' in text.literal && ']' in text.literal) pending += text
-                }
-            },
-        )
-        for (text in pending) rewriteText(text, scopeFqn)
+        val href = typeHrefByFqn[typeFqn] ?: return
+        val short = typeFqn.substringAfterLast('.')
+        sources += sourceLabel to mapOf(short to href)
     }
 
-    private fun rewriteText(
-        text: Text,
-        scopeFqn: String,
-    ) {
-        val original = text.literal
-        val matches = bracketPattern.findAll(original).toList()
-        if (matches.isEmpty()) return
+    /**
+     * Bind the descriptor FQN of the comment about to be parsed.  Must be paired with
+     * [clearCurrentScope] (typically in a `try`/`finally`) so a thrown exception inside the
+     * parser doesn't leak a stale scope into the next comment.  Empty string means file scope.
+     */
+    fun setCurrentScope(scopeFqn: String) {
+        currentScope = scopeFqn
+    }
 
-        val replacement = mutableListOf<Node>()
-        var cursor = 0
-        var changed = false
-        for (m in matches) {
-            val label = m.groupValues[1]
-            val outcome = resolve(label, scopeFqn)
-            val href =
+    /** Reset the scope to file scope.  See [setCurrentScope]. */
+    fun clearCurrentScope() {
+        currentScope = ""
+    }
+
+    /**
+     * [LinkProcessor] installed on the [org.commonmark.parser.Parser] in [Compiler].  Fires for
+     * every parsed link/image — inline (`[text](url)`), shortcut (`[text]`), collapsed
+     * (`[text][]`), and full (`[text][label]`).  Inline links and images are handed back to
+     * the core processor untouched; the three reference forms are resolved against the
+     * compile scope (with full-form's `label` as the lookup key and `text` preserved as
+     * display content).  Returning [LinkResult.none] for unresolved labels lets the core
+     * processor fall through to literal text — preserving the brackets in the output so the
+     * failure surface in `FAIL_ON_INVALID` mode is easy to spot.
+     */
+    val linkProcessor: LinkProcessor =
+        LinkProcessor { linkInfo, scanner, _ -> processLink(linkInfo, scanner) }
+
+    private fun processLink(
+        linkInfo: LinkInfo,
+        scanner: Scanner,
+    ): LinkResult? {
+        if (linkInfo.destination() != null) return LinkResult.none()
+        if (linkInfo.marker() != null) return LinkResult.none()
+        val rawLabel = linkInfo.label()
+        val text = linkInfo.text()
+        // shortcut `[text]` → label null; collapsed `[text][]` → label "" — both use text as the key.
+        // full `[text][label]` → resolve label, but the visible link text stays as text.
+        val key = if (rawLabel.isNullOrEmpty()) text else rawLabel
+        if (key.isEmpty()) return LinkResult.none()
+        val scopeFqn = currentScope
+        val outcome = resolve(key, scopeFqn)
+        if (log.isTraceEnabled) {
+            val outcomeDescription =
                 when (outcome) {
-                    is Outcome.Resolved -> outcome.href
-
-                    is Outcome.Ambiguous -> {
-                        reportFailure(scopeFqn, label, FailureReason.Ambiguous(outcome.candidates))
-                        outcome.href
-                    }
-
-                    Outcome.Unresolved -> {
-                        reportFailure(scopeFqn, label, FailureReason.Unresolved)
-                        continue
-                    }
+                    is Outcome.Resolved -> "resolved → ${outcome.href}"
+                    is Outcome.Ambiguous -> "ambiguous → ${outcome.href} (candidates: ${outcome.candidates.joinToString("; ")})"
+                    Outcome.Unresolved -> "unresolved"
                 }
-            if (m.range.first > cursor) replacement += Text(original.substring(cursor, m.range.first))
-            val link = Link(href, null)
-            link.appendChild(Text(label))
-            replacement += link
-            cursor = m.range.last + 1
-            changed = true
+            log.trace(
+                "reference-link [{}] identified in {} :: {} — {}",
+                key,
+                fileByFqn[scopeFqn] ?: "(unknown)",
+                scopeFqn.ifEmpty { "(file scope)" },
+                outcomeDescription,
+            )
         }
-        if (!changed) return
-        if (cursor < original.length) replacement += Text(original.substring(cursor))
+        return when (outcome) {
+            is Outcome.Resolved -> LinkResult.wrapTextIn(Link(outcome.href, null), scanner.position())
 
-        for (node in replacement) text.insertBefore(node)
-        text.unlink()
+            is Outcome.Ambiguous -> {
+                reportFailure(scopeFqn, key, FailureReason.Ambiguous(outcome.candidates))
+                LinkResult.wrapTextIn(Link(outcome.href, null), scanner.position())
+            }
+
+            Outcome.Unresolved -> {
+                reportFailure(scopeFqn, key, FailureReason.Unresolved)
+                LinkResult.none()
+            }
+        }
     }
 
     /**
@@ -486,9 +556,5 @@ internal class ReferenceLinkResolver(
     sealed class FailureReason {
         object Unresolved : FailureReason()
         data class Ambiguous(val candidates: List<String>) : FailureReason()
-    }
-
-    private companion object {
-        val bracketPattern = Regex("""\[([^\[\]\r\n]+)\]""")
     }
 }
