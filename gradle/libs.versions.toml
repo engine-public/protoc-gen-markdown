@@ -5,6 +5,8 @@ kotest = "6.1.4"
 engine-protoc-utils = "0.0.0-pre.0"
 graalvm-sdk = "23.1.2"
 commonmark = "0.26.0"
+log4j = "2.26.0"
+slf4j = "2.0.17"
 
 # plugin versions
 google-osdetector-plugin = "1.7.3"
@@ -32,6 +34,10 @@ graalvm-sdk = { group = "org.graalvm.sdk", name = "graal-sdk", version.ref = "gr
 commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "commonmark" }
 commonmark-ext-gfm-tables = { group = "org.commonmark", name = "commonmark-ext-gfm-tables", version.ref = "commonmark" }
 commonmark-ext-yaml-front-matter = { group = "org.commonmark", name = "commonmark-ext-yaml-front-matter", version.ref = "commonmark" }
+log4j-api = { group = "org.apache.logging.log4j", name = "log4j-api", version.ref = "log4j" }
+log4j-core = { group = "org.apache.logging.log4j", name = "log4j-core", version.ref = "log4j" }
+log4j-slf4j2-impl = { group = "org.apache.logging.log4j", name = "log4j-slf4j2-impl", version.ref = "log4j" }
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 
 # test dependencies
 test-kotest-assertions-core = { group = "io.kotest", name = "kotest-assertions-core", version.ref = "kotest" }

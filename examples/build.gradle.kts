@@ -1,4 +1,8 @@
+@file:OptIn(ExperimentalTime::class)
+
 import org.gradle.internal.extensions.stdlib.capitalized
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 plugins {
     alias(libs.plugins.protobuf)
@@ -125,6 +129,8 @@ protobuf {
             if (name == "generate${suiteName.capitalized()}Proto") {
                 plugins {
                     create("recorder") {
+                        option("logLevel=TRACE")
+                        option("logFile=${project.layout.buildDirectory.dir("logs/${Clock.System.now().epochSeconds}").map { it.file("${suiteName}.txt") }.get().asFile.absolutePath}")
                         opts.forEach { option(it) }
                     }
                 }

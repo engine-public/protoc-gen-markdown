@@ -6,8 +6,14 @@ import com.engine.protoc.util.compiler.Parameters
 import com.engine.protoc.util.extensions.wrap
 import com.google.protobuf.ExtensionRegistry
 import com.google.protobuf.compiler.PluginProtos
+import org.apache.logging.log4j.core.appender.ConsoleAppender
+import org.apache.logging.log4j.core.config.Configurator
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFactory
+import org.slf4j.event.Level
 import java.io.InputStream
 import java.time.Clock
+import java.util.concurrent.atomic.AtomicBoolean
+import org.apache.logging.log4j.Level as Log4jLevel
 
 public class ProtocGenMarkdown(
     private val request: CodeGeneratorRequestWrapper,
@@ -21,7 +27,7 @@ public class ProtocGenMarkdown(
      * Add new options as properties here, then wire each one through [Builder] so it can be parsed
      * from the `--markdown_out=key=value,…:outdir` parameter string.
      */
-    public class Options private constructor(
+    public data class Options(
         /**
          * When true (default), every emitted heading is prefixed with an inline empty
          * `<a id="…"></a>` whose id is the heading's full ancestor-path joined with `-`
@@ -194,6 +200,30 @@ public class ProtocGenMarkdown(
          */
         public val includePackageIndices: Boolean,
         /**
+         * Threshold at which the plugin emits log records via SLF4J.  Accepts any value of
+         * [org.slf4j.event.Level] (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`); a record is
+         * emitted when its level is greater than or equal to this threshold.  Defaults to
+         * `ERROR` so the plugin is quiet by default but still surfaces error-level reports.
+         *
+         * The option is realised at runtime by programmatically reconfiguring the Log4j 2
+         * `Configuration` after [Options] is built, so it controls every logger the plugin
+         * (and its dependencies) creates.
+         *
+         * Passed via `--markdown_out=logLevel=DEBUG:outdir` (case-insensitive).
+         */
+        public val logLevel: Level,
+        /**
+         * Optional path to a file that receives timestamped log records in addition to the
+         * stderr console output.  The stderr `Console` appender is always attached — its lines
+         * are prefixed with `[protoc-gen-markdown]` so they stand out from other compiler
+         * output protoc may multiplex on the same stream.  When this option is set, a `File`
+         * appender is *also* attached at the given path with a `%d{HH:mm:ss.SSS}`-prefixed
+         * pattern.
+         *
+         * Passed via `--markdown_out=logFile=/tmp/protoc.log:outdir`.
+         */
+        public val logFile: String?,
+        /**
          * Sort order for the per-file lists of services, messages, and enums under each
          * `## Services` / `## Messages` / `## Enums` section.
          *
@@ -279,15 +309,16 @@ public class ProtocGenMarkdown(
          *    downstream pipeline takes over reference resolution.
          *  - [ResolveReferenceLinksMode.WARN] — references resolve against the types, fields,
          *    enum values, and RPCs in the compile scope and are rewritten into real Markdown
-         *    links to the target's heading anchor.  Unresolved names stay literal.  Key
-         *    collisions during indexing (e.g. top-level `Foo` plus nested `Outer.Foo`) log
-         *    warnings naming the candidates so authors can disambiguate by qualifying.
+         *    links to the target's heading anchor.  Unresolved names stay literal.  Every
+         *    comment-level reference that fails to resolve, or that resolves through an
+         *    ambiguous short-name collision, logs at `warn` naming the request site (proto
+         *    file, comment scope, label) and the candidates / reason.
          *  - [ResolveReferenceLinksMode.FAIL_ON_INVALID] (default) — same rewrite path as
-         *    [WARN], but the plugin additionally **collects** every comment-level reference
-         *    that doesn't resolve or that resolves through an ambiguous key, and at the end of
-         *    compilation sets `CodeGeneratorResponse.error` so protoc fails the run.
-         *    Reference-driven: collisions that are never used in any comment do not cause a
-         *    failure.
+         *    [WARN], but each failing comment-level reference logs at `error` with the
+         *    request-site details, and the plugin additionally **collects** every failure and
+         *    at the end of compilation sets `CodeGeneratorResponse.error` so protoc fails the
+         *    run.  Reference-driven: collisions that are never used in any comment do not
+         *    cause a failure (they only emit a `debug` line at index time).
          *
          * The resolver honors the comment's own anchor descriptor for bare-name lookups, so
          * authors can write `[name]` inside a comment on `message User` and have it find
@@ -340,6 +371,10 @@ public class ProtocGenMarkdown(
 
             public var includePackageIndices: Boolean = parameters.get<Boolean>("includePackageIndices") ?: true
 
+            public var logLevel: Level = parameters.get<Level>("logLevel") ?: Level.ERROR
+
+            public var logFile: String? = parameters.get<String>("logFile")
+
             public var typeSortMode: SortMode = parameters.get<SortMode>("typeSortMode") ?: SortMode.ALPHABETICAL
 
             public var fileSortMode: SortMode = parameters.get<SortMode>("fileSortMode") ?: SortMode.ALPHABETICAL
@@ -365,6 +400,8 @@ public class ProtocGenMarkdown(
                     maxTableOfContentsHeader = maxTableOfContentsHeader,
                     outputType = outputType,
                     includePackageIndices = includePackageIndices,
+                    logLevel = logLevel,
+                    logFile = logFile,
                     typeSortMode = typeSortMode,
                     fileSortMode = fileSortMode,
                     rpcSortMode = rpcSortMode,
@@ -383,12 +420,84 @@ public class ProtocGenMarkdown(
             block: Options.Builder.() -> Unit = {},
         ): ProtocGenMarkdown {
             val cgreq = PluginProtos.CodeGeneratorRequest.parseFrom(input, registry).wrap()
-            return ProtocGenMarkdown(
-                cgreq,
-                Options.Builder.from(cgreq.parameters).apply(block).build(),
-                clock,
-            )
+            val options = Options.Builder.from(cgreq.parameters).apply(block).build()
+            applyLoggingConfiguration(options)
+            return ProtocGenMarkdown(cgreq, options, clock)
         }
+
+        /**
+         * Reconfigures the Log4j 2 `Configuration` from [Options.logLevel] and [Options.logFile].
+         *
+         * Appenders are attached to the `com.engine` logger only, so downstream dependencies'
+         * loggers stay silent regardless of their own level.  A stderr `Console` appender is
+         * always attached, prefixed with `[protoc-gen-markdown]` so its records stand out from
+         * other compiler output protoc may multiplex on the same stream.  When [Options.logFile]
+         * is non-null a `File` appender is also attached, writing timestamped records to the
+         * given path.  The root logger is silenced with `Level.OFF` to discard anything emitted
+         * outside the `com.engine` tree.  Invoked from [from] immediately after [Options] is
+         * built so subsequent `LoggerFactory.getLogger` calls observe the resolved configuration.
+         */
+        private fun applyLoggingConfiguration(options: Options) {
+            val cb = ConfigurationBuilderFactory.newConfigurationBuilder()
+            cb.setStatusLevel(Log4jLevel.OFF)
+
+            cb.add(
+                cb.newAppender("stderr", "Console")
+                    .addAttribute("target", ConsoleAppender.Target.SYSTEM_ERR)
+                    .add(
+                        cb.newLayout("PatternLayout")
+                            .addAttribute("pattern", "[protoc-gen-markdown] %-5level %logger{36} - %msg%n"),
+                    ),
+            )
+
+            val engine =
+                cb.newLogger("com.engine", options.logLevel.toLog4j())
+                    .addAttribute("additivity", false)
+                    .add(cb.newAppenderRef("stderr"))
+
+            options.logFile?.let { path ->
+                cb.add(
+                    cb.newAppender("file", "File")
+                        .addAttribute("fileName", path)
+                        .add(
+                            cb.newLayout("PatternLayout")
+                                .addAttribute("pattern", "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"),
+                        ),
+                )
+                engine.add(cb.newAppenderRef("file"))
+            }
+
+            cb.add(engine)
+            cb.add(cb.newRootLogger(Log4jLevel.OFF))
+            val config = cb.build(false)
+            // First call in this JVM: `initialize` so a fresh LoggerContext
+            // starts with our configuration directly, bypassing Log4j's default
+            // config-file probing (~24 file paths) that breaks under
+            // native-image's strict missing-resource registration.
+            // Subsequent calls (test harnesses re-entering `from(...)` with
+            // different `logLevel` / `logFile`): `reconfigure` swaps in the
+            // freshly-built configuration.  Calling `reconfigure` on the same
+            // config object that was just installed by `initialize` triggers a
+            // start-then-immediate-stop sequence inside log4j2 that leaves
+            // every appender in the `stopped` state, silently dropping all
+            // subsequent events — the gate below avoids that.
+            if (configurationInitialized.compareAndSet(false, true)) {
+                Configurator.initialize(config)
+            } else {
+                Configurator.reconfigure(config)
+            }
+        }
+
+        private val configurationInitialized = AtomicBoolean(false)
+
+        private fun Level.toLog4j(): Log4jLevel =
+            when (this) {
+                Level.ERROR -> Log4jLevel.ERROR
+                Level.WARN -> Log4jLevel.WARN
+                Level.INFO -> Log4jLevel.INFO
+                Level.DEBUG -> Log4jLevel.DEBUG
+                Level.TRACE -> Log4jLevel.TRACE
+            }
     }
 
     public fun compile(): PluginProtos.CodeGeneratorResponse = Compiler(request, options, clock).compile()
