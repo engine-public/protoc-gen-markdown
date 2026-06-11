@@ -64,11 +64,13 @@ Read and mutate user records.
 
 |Name|Input|Output|Description|
 |---|---|---|---|
-|GetUser|[GetUserRequest](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-GetUserRequest)|[User](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User)|Look up a user by id.|
+|GetUser|[GetUserRequest](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-GetUserRequest)|[User](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User)|Look up a user by id. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Services-UserService-RPC_Details-GetUser)|
 
 ##### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Services-UserService-RPC_Details"></a>RPC Details
 
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Services-UserService-RPC_Details-GetUser"></a>GetUser
+
+Look up a user by id.
 
 ___
 
@@ -104,17 +106,23 @@ A user of the system.
 
 |Name|Type|Description|
 |---|---|---|
-|id|string|Stable identifier.|
-|name|string|Display name.|
-|role|[UserRole](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Enums-UserRole)|The user's role in the system.|
+|id|string|Stable identifier. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-id)|
+|name|string|Display name. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-name)|
+|role|[UserRole](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Enums-UserRole)|The user's role in the system. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-role)|
 
 ##### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details"></a>Field Details
 
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-id"></a>id
 
+Stable identifier.
+
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-name"></a>name
 
+Display name.
+
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User-Field_Details-role"></a>role
+
+The user's role in the system.
 
 ___
 
@@ -170,14 +178,18 @@ One audit-log entry.
 
 |Name|Type|Description|
 |---|---|---|
-|subject|[User](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User)|The user the event is about.|
-|kind|[EventKind](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Enums-EventKind)|What the user did.|
+|subject|[User](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_core_proto-Messages-User)|The user the event is about. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Messages-Event-Field_Details-subject)|
+|kind|[EventKind](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Enums-EventKind)|What the user did. [...](#engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Messages-Event-Field_Details-kind)|
 
 ##### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Messages-Event-Field_Details"></a>Field Details
 
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Messages-Event-Field_Details-subject"></a>subject
 
+The user the event is about.
+
 ###### <a id="engine_protoc_markdown_example_outputtypeperpackage-engine_protoc_markdown_example_outputtypeperpackage_events_proto-Messages-Event-Field_Details-kind"></a>kind
+
+What the user did.
 
 ___
 

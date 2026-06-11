@@ -16,13 +16,5 @@ ___
   - [Enums](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums)
     
     - [Status](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums-Status)
-      
-      - [STATUS\_UNSPECIFIED](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums-Status-Value_Details-STATUS_UNSPECIFIED)
-      
-      - [STATUS\_BETA](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums-Status-Value_Details-STATUS_BETA)
-      
-      - [STATUS\_ZEBRA](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums-Status-Value_Details-STATUS_ZEBRA)
-      
-      - [STATUS\_ALPHA](status.md#engine_protoc_markdown_example_enumvaluesortmodenumber_status_proto-Enums-Status-Value_Details-STATUS_ALPHA)
 
 <!-- @@protoc_insertion_point(file_footer) -->

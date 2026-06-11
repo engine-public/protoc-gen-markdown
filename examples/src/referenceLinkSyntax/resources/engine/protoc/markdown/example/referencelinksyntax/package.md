@@ -16,31 +16,17 @@ ___
   - [Services](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Services)
     
     - [ExampleService](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Services-ExampleService)
-      
-      - [Submit](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Services-ExampleService-RPC_Details-Submit)
   
   - [Messages](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages)
     
     - [Holder](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder)
-      
-      - [responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-responsive)
-      
-      - [tags](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-tags)
     
     - [Holder.Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder_Responsive)
-      
-      - [label](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder_Responsive-Field_Details-label)
     
     - [Responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive)
-      
-      - [id](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Responsive-Field_Details-id)
     
     - [SubmitRequest](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-SubmitRequest)
-      
-      - [payload](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-SubmitRequest-Field_Details-payload)
     
     - [SubmitResponse](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-SubmitResponse)
-      
-      - [result](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-SubmitResponse-Field_Details-result)
 
 <!-- @@protoc_insertion_point(file_footer) -->

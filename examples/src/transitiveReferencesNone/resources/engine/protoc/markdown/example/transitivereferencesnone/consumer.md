@@ -40,13 +40,17 @@ transitive-only `core.proto`, renders as plain text in the type column and the b
 
 |Name|Type|Description|
 |---|---|---|
-|entity|CoreEntity|The entity this consumer wraps; see \[CoreEntity\].|
-|status|CoreStatus|Lifecycle status; see \[CoreStatus\].|
+|entity|CoreEntity|The entity this consumer wraps; see \[CoreEntity\]. [...](#engine_protoc_markdown_example_transitivereferencesnone_consumer_proto-Messages-Consumer-Field_Details-entity)|
+|status|CoreStatus|Lifecycle status; see \[CoreStatus\]. [...](#engine_protoc_markdown_example_transitivereferencesnone_consumer_proto-Messages-Consumer-Field_Details-status)|
 
 #### <a id="engine_protoc_markdown_example_transitivereferencesnone_consumer_proto-Messages-Consumer-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_transitivereferencesnone_consumer_proto-Messages-Consumer-Field_Details-entity"></a>entity
 
+The entity this consumer wraps; see \[CoreEntity\].
+
 ##### <a id="engine_protoc_markdown_example_transitivereferencesnone_consumer_proto-Messages-Consumer-Field_Details-status"></a>status
+
+Lifecycle status; see \[CoreStatus\].
 
 <!-- @@protoc_insertion_point(file_footer) -->

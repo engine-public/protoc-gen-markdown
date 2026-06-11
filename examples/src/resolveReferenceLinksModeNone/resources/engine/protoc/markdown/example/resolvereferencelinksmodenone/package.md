@@ -16,11 +16,7 @@ ___
   - [Messages](references.md#engine_protoc_markdown_example_resolvereferencelinksmodenone_references_proto-Messages)
     
     - [Existing](references.md#engine_protoc_markdown_example_resolvereferencelinksmodenone_references_proto-Messages-Existing)
-      
-      - [label](references.md#engine_protoc_markdown_example_resolvereferencelinksmodenone_references_proto-Messages-Existing-Field_Details-label)
     
     - [Referencer](references.md#engine_protoc_markdown_example_resolvereferencelinksmodenone_references_proto-Messages-Referencer)
-      
-      - [note](references.md#engine_protoc_markdown_example_resolvereferencelinksmodenone_references_proto-Messages-Referencer-Field_Details-note)
 
 <!-- @@protoc_insertion_point(file_footer) -->

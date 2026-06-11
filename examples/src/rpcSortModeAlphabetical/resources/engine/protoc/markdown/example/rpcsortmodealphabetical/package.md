@@ -16,12 +16,6 @@ ___
   - [Services](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Services)
     
     - [WheelService](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Services-WheelService)
-      
-      - [Accelerate](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Services-WheelService-RPC_Details-Accelerate)
-      
-      - [Brake](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Services-WheelService-RPC_Details-Brake)
-      
-      - [Zoom](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Services-WheelService-RPC_Details-Zoom)
   
   - [Messages](wheel.md#engine_protoc_markdown_example_rpcsortmodealphabetical_wheel_proto-Messages)
     

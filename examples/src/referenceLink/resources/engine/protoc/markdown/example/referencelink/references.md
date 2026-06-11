@@ -52,13 +52,17 @@ produced for this suite.  See [ExternalSpec](/docs/external-spec) and [Wrapper](
 
 |Name|Type|Description|
 |---|---|---|
-|name|string|Free-form label; see [Wrapper](/docs/override-wrapper) for context on the surrounding message.|
-|core|[CoreEntity](example.com/docs/core-entity)|The transitive type whose field-type cell points at the override URL.|
+|name|string|Free-form label; see [Wrapper](/docs/override-wrapper) for context on the surrounding message. [...](#engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-name)|
+|core|[CoreEntity](example.com/docs/core-entity)|The transitive type whose field-type cell points at the override URL. [...](#engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-core)|
 
 #### <a id="engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-name"></a>name
 
+Free-form label; see [Wrapper](/docs/override-wrapper) for context on the surrounding message.
+
 ##### <a id="engine_protoc_markdown_example_referencelink_references_proto-Messages-Wrapper-Field_Details-core"></a>core
+
+The transitive type whose field-type cell points at the override URL.
 
 <!-- @@protoc_insertion_point(file_footer) -->

@@ -16,29 +16,15 @@ ___
   - [Services](hello.md#engine_protoc_markdown_example_hello_hello_proto-Services)
     
     - [GreeterService](hello.md#engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService)
-      
-      - [SayHello](hello.md#engine_protoc_markdown_example_hello_hello_proto-Services-GreeterService-RPC_Details-SayHello)
   
   - [Messages](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages)
     
     - [GreetingRequest](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest)
-      
-      - [name](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-name)
-      
-      - [type](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-type)
     
     - [GreetingResponse](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse)
-      
-      - [greeting](hello.md#engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingResponse-Field_Details-greeting)
   
   - [Enums](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums)
     
     - [GreetingType](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType)
-      
-      - [GREETING\_TYPE\_UNSPECIFIED](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_UNSPECIFIED)
-      
-      - [GREETING\_TYPE\_INFORMAL](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_INFORMAL)
-      
-      - [GREETING\_TYPE\_FORMAT](hello.md#engine_protoc_markdown_example_hello_hello_proto-Enums-GreetingType-Value_Details-GREETING_TYPE_FORMAT)
 
 <!-- @@protoc_insertion_point(file_footer) -->

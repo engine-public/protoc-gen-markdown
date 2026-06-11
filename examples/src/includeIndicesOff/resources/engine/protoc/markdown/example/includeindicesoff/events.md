@@ -42,14 +42,18 @@ One audit-log entry.
 
 |Name|Type|Description|
 |---|---|---|
-|subject|[User](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User)|The user the event is about.|
-|kind|[EventKind](events.md#engine_protoc_markdown_example_includeindicesoff_events_proto-Enums-EventKind)|What the user did.|
+|subject|[User](core.md#engine_protoc_markdown_example_includeindicesoff_core_proto-Messages-User)|The user the event is about. [...](#engine_protoc_markdown_example_includeindicesoff_events_proto-Messages-Event-Field_Details-subject)|
+|kind|[EventKind](events.md#engine_protoc_markdown_example_includeindicesoff_events_proto-Enums-EventKind)|What the user did. [...](#engine_protoc_markdown_example_includeindicesoff_events_proto-Messages-Event-Field_Details-kind)|
 
 #### <a id="engine_protoc_markdown_example_includeindicesoff_events_proto-Messages-Event-Field_Details"></a>Field Details
 
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_events_proto-Messages-Event-Field_Details-subject"></a>subject
 
+The user the event is about.
+
 ##### <a id="engine_protoc_markdown_example_includeindicesoff_events_proto-Messages-Event-Field_Details-kind"></a>kind
+
+What the user did.
 
 ___
 

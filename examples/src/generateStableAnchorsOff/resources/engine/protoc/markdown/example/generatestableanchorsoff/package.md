@@ -16,13 +16,7 @@ ___
   - [Messages](generate_stable_anchors.md#messages)
     
     - [First](generate_stable_anchors.md#first)
-      
-      - [text](generate_stable_anchors.md#text)
-      
-      - [second](generate_stable_anchors.md#second)
     
     - [Second](generate_stable_anchors.md#second)
-      
-      - [text](generate_stable_anchors.md#text)
 
 <!-- @@protoc_insertion_point(file_footer) -->
