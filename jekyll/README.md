@@ -86,7 +86,7 @@ The published artifact is POM-only with one classified `.exe` per platform (`lin
 ```bash
 # one-time: download the native binary for your platform from the GitHub release
 curl -L -o protoc-gen-markdown-jekyll \
-  https://github.com/hotelengine/protoc-gen-markdown/releases/download/<version>/protoc-gen-markdown-jekyll-<os>-<arch>.exe
+  https://github.com/engine-public/protoc-gen-markdown/releases/download/<version>/protoc-gen-markdown-jekyll-<os>-<arch>.exe
 chmod +x protoc-gen-markdown-jekyll
 mv protoc-gen-markdown-jekyll /usr/local/bin/
 
@@ -119,7 +119,7 @@ In addition to these, pass the core plugin's layout options (`outputType`, `incl
 ## Related Projects
 
 - [`protoc-gen-markdown`](../README.md) — the core plugin this one enriches; its `frontmatter` insertion point and deterministic output filenames are what make this pairing possible (see [Pairing with other protoc plugins](../README.md#pairing-with-other-protoc-plugins)).
-- [hotelengine/protoc-utils](https://github.com/HotelEngine/protoc-utils) — shared protoc plugin utilities (descriptor wrappers, comment parsing, parameter handling) and the `recorder` plugin used by the example suite.
+- [engine-public/protoc-utils](https://github.com/engine-public/protoc-utils) — shared protoc plugin utilities (descriptor wrappers, comment parsing, parameter handling) and the `recorder` plugin used by the example suite.
 
 ## Contributing
 

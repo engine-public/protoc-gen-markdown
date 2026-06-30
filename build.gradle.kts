@@ -385,18 +385,18 @@ publishing {
                 licenses {
                     license {
                         name.set("Apache-2.0")
-                        url.set("https://github.com/hotelengine/protoc-gen-markdown/blob/${version}/LICENSE")
+                        url.set("https://github.com/engine-public/protoc-gen-markdown/blob/${version}/LICENSE")
                     }
                 }
                 developers {
                     developer {
-                        organizationUrl.set("https://github.com/hotelengine")
+                        organizationUrl.set("https://github.com/engine-public")
                     }
                 }
                 scm {
-                    connection.set("scm:git:https://github.com/hotelengine/protoc-gen-markdown.git")
-                    developerConnection.set("scm:git:https://github.com/hotelengine/protoc-gen-markdown.git")
-                    url.set("https://github.com/hotelengine/protoc-gen-markdown")
+                    connection.set("scm:git:https://github.com/engine-public/protoc-gen-markdown.git")
+                    developerConnection.set("scm:git:https://github.com/engine-public/protoc-gen-markdown.git")
+                    url.set("https://github.com/engine-public/protoc-gen-markdown")
                 }
             }
         }
@@ -407,7 +407,7 @@ afterEvaluate {
     val pub = publishing.publications.getByName<MavenPublication>("maven")
     pub.pom {
         description.set(project.description)
-        url.set("https://github.com/hotelengine/protoc-gen-markdown/blob/${version}/README.md")
+        url.set("https://github.com/engine-public/protoc-gen-markdown/blob/${version}/README.md")
     }
 
     val binDir = nativeBinariesDir.get()

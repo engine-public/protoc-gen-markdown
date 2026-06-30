@@ -75,7 +75,7 @@ Use the `com.google.osdetector` Gradle plugin to pick the right classifier at re
 ```bash
 # one-time: download the native binary for your platform from the GitHub release
 curl -L -o protoc-gen-markdown \
-  https://github.com/hotelengine/protoc-gen-markdown/releases/download/<version>/protoc-gen-markdown-<os>-<arch>.exe
+  https://github.com/engine-public/protoc-gen-markdown/releases/download/<version>/protoc-gen-markdown-<os>-<arch>.exe
 chmod +x protoc-gen-markdown
 mv protoc-gen-markdown /usr/local/bin/
 
@@ -161,9 +161,9 @@ Package-index files (emitted when `includeIndices=true` under `outputType=PER_FI
 
 ## Related Projects
 
-- [hotelengine/protoc-utils](https://github.com/HotelEngine/protoc-utils) — shared protoc plugin utilities (descriptor wrappers, comment parsing, parameter handling) and the `recorder` plugin used by this project's example suite.
-- [hotelengine/protoc-gen-mermaid](https://github.com/hotelengine/protoc-gen-mermaid) — sibling plugin generating Mermaid class diagrams from the same descriptors; the layout and conventions of this repo follow it closely.
-- [hotelengine/protoc-gen-openapi](https://github.com/hotelengine/protoc-gen-openapi) — sibling plugin generating OpenAPI 3.1 documents from the same descriptors.
+- [engine-public/protoc-utils](https://github.com/engine-public/protoc-utils) — shared protoc plugin utilities (descriptor wrappers, comment parsing, parameter handling) and the `recorder` plugin used by this project's example suite.
+- [engine-public/protoc-gen-mermaid](https://github.com/engine-public/protoc-gen-mermaid) — sibling plugin generating Mermaid class diagrams from the same descriptors; the layout and conventions of this repo follow it closely.
+- [engine-public/protoc-gen-openapi](https://github.com/engine-public/protoc-gen-openapi) — sibling plugin generating OpenAPI 3.1 documents from the same descriptors.
 
 ## Contributing
 
