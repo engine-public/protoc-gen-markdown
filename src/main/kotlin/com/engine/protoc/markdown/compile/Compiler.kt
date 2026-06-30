@@ -1234,7 +1234,7 @@ internal class Compiler(
     private fun frontmatterBlock(): YamlFrontMatterBlock {
         val version = Version.value
         val block = YamlFrontMatterBlock()
-        block.appendChild(YamlFrontMatterNode("generated-by", listOf("https://github.com/hotelengine/protoc-gen-markdown/releases/tag/$version")))
+        block.appendChild(YamlFrontMatterNode("generated-by", listOf("https://github.com/engine-public/protoc-gen-markdown/releases/tag/$version")))
         block.appendChild(YamlFrontMatterNode("protoc-gen-markdown-generated-on", listOf(DateTimeFormatter.ISO_INSTANT.format(clock.instant()))))
         block.appendChild(YamlFrontMatterNode("protoc-gen-markdown-options", listOf(formatOptions())))
         return block
