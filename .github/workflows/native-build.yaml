@@ -124,9 +124,9 @@ jobs:
         env:
           ENGINE_BUILD_VERSION: ${{ steps.getversion.outputs.version }}
         run: |
-          ./gradlew :nativeCompile
+          ./gradlew :nativeCompile :protoc-gen-markdown-jekyll:nativeCompile
 
-      - name: Stage Binary
+      - name: Stage Binaries
         shell: bash
         env:
           CLASSIFIER: ${{ matrix.classifier }}
@@ -134,12 +134,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p staging
-          src="build/native/nativeCompile/protoc-gen-markdown-${CLASSIFIER}.exe"
-          test -f "$src" || { echo "expected native binary not found at $src"; ls -al build/native/nativeCompile; exit 1; }
-          cp "$src" "staging/protoc-gen-markdown-${VERSION}-${CLASSIFIER}.exe"
+          for module in "protoc-gen-markdown:build/native/nativeCompile" \
+                        "protoc-gen-markdown-jekyll:jekyll/build/native/nativeCompile"; do
+            name="${module%%:*}"
+            dir="${module##*:}"
+            src="${dir}/${name}-${CLASSIFIER}.exe"
+            test -f "$src" || { echo "expected native binary not found at $src"; ls -al "$dir"; exit 1; }
+            cp "$src" "staging/${name}-${VERSION}-${CLASSIFIER}.exe"
+          done
           ls -al staging
 
-      - name: Upload Native Binary
+      - name: Upload Native Binaries
         uses: actions/upload-artifact@v4
         with:
           name: dist-native-${{ matrix.classifier }}
