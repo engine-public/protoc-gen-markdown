@@ -18,14 +18,24 @@ buildscript {
              * (CVE-2026-54514). Transitive of CycloneDX.
              * The case-insensitive @JsonIgnoreProperties bypass (CVE-2026-54515,
              * GHSA-5jmj-h7xm-6q6v) is fixed in 2.22.1; its 2.21-line fix (2.21.5)
-             * was never released to Maven Central. Pin the whole Jackson 2.x
-             * family to 2.22.1 to keep databind/core internally aligned.
-             * jackson-core is bumped in lock-step to avoid databind/core skew;
-             * jackson-annotations tracks its own 2.22 line and resolves via the BOM.
+             * was never released to Maven Central.
+             * 2.22.2 fixes the DefaultBaseTypeLimitingValidator denylist gap
+             * (GHSA-gx83-3vf8-gh7j), Duration/XMLGregorianCalendar parse DoS
+             * (GHSA-q4xh-88c3-wmh7), and Path deserialization scheme allowlist
+             * (GHSA-wjgm-6hv5-3cvf). 2.22.3 fixes the jackson-core
+             * _reportInvalidToken DoS (GHSA-7hhh-6rmp-j9qf) and PATTERN_FLOAT
+             * ReDoS (GHSA-p6pp-m3f8-5c89), plus the databind forward-reference
+             * (GHSA-cxp5-3px4-pw24) and unknown type ID retention
+             * (GHSA-wv8q-qhhj-9h54) issues. CycloneDX 3.5.0 still imports
+             * jackson-bom 2.22.2, so the pin remains necessary.
+             * Pin the whole Jackson 2.x family to 2.22.3 to keep databind/core
+             * internally aligned. jackson-core is bumped in lock-step to avoid
+             * databind/core skew; jackson-annotations tracks its own 2.22 line
+             * and resolves via the BOM.
              */
             if (requested.group == "com.fasterxml.jackson.core" && requested.name != "jackson-annotations") {
-                useVersion("2.22.1")
-                because("jackson-databind PTV/@JsonView/@JsonIgnore bypasses and SSRF (CVE-2026-54512..54518)")
+                useVersion("2.22.3")
+                because("jackson-databind/core advisories fixed through 2.22.3 (CVE-2026-54512..54518, GHSA-7hhh-6rmp-j9qf et al.)")
             }
         }
     }
