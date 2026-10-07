@@ -5,34 +5,17 @@ import org.gradle.kotlin.dsl.configure
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jlleitschuh.gradle.ktlint.KtlintExtension
 import org.jlleitschuh.gradle.ktlint.reporter.ReporterType
-import org.jreleaser.gradle.plugin.JReleaserExtension
-import org.jreleaser.model.Active
-import java.util.Calendar
 import java.util.function.Predicate
 
 buildscript {
     configurations.classpath {
         resolutionStrategy.eachDependency {
             /*
-             * GHSA-f58c-gq56-vjjf — Apache Tika XXE. Transitive of JReleaser.
-             */
-            if (requested.group == "org.apache.tika" && requested.name == "tika-core") {
-                useVersion("3.2.2")
-                because("Apache Tika XXE (GHSA-f58c-gq56-vjjf)")
-            }
-            /*
-             * GHSA-6fmv-xxpf-w3cw — plexus-utils path traversal. Transitive of JReleaser.
-             */
-            if (requested.group == "org.codehaus.plexus" && requested.name == "plexus-utils") {
-                useVersion("3.6.1")
-                because("plexus-utils directory traversal (GHSA-6fmv-xxpf-w3cw)")
-            }
-            /*
              * jackson-databind advisories: PolymorphicTypeValidator bypasses
              * (CVE-2026-54513, CVE-2026-54512), @JsonView / @JsonIgnore /
              * @JsonIgnoreProperties bypasses (CVE-2026-54517, CVE-2026-54516,
              * CVE-2026-54515, CVE-2026-54518), and InetSocketAddress SSRF
-             * (CVE-2026-54514). Transitive of CycloneDX and JReleaser.
+             * (CVE-2026-54514). Transitive of CycloneDX.
              * The case-insensitive @JsonIgnoreProperties bypass (CVE-2026-54515,
              * GHSA-5jmj-h7xm-6q6v) is fixed in 2.22.1; its 2.21-line fix (2.21.5)
              * was never released to Maven Central. Pin the whole Jackson 2.x
@@ -53,7 +36,6 @@ plugins {
     idea
     alias(libs.plugins.cyclonedx)
     alias(libs.plugins.graalvm.native)
-    alias(libs.plugins.jreleaser)
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.license.report).apply(false)
@@ -69,43 +51,6 @@ fun calculateVersion(): String =
         ?: "0.0.0-pre.0" // temporary fallback version
 
 description = "protoc compiler to turn protobuf descriptors into CommonMark markdown documents"
-
-val mavenStagingDir = layout.buildDirectory.dir("staging/maven-central")
-
-configure<JReleaserExtension> {
-    project {
-        description = "protoc compiler to turn protobuf descriptors into CommonMark markdown documents"
-        copyright = "Copyright ${Calendar.getInstance().get(Calendar.YEAR)} HotelEngine, Inc., d/b/a Engine"
-        license = "Apache-2.0"
-    }
-    signing {
-        active.set(Active.ALWAYS)
-        armored.set(true)
-    }
-    deploy {
-        maven {
-            mavenCentral {
-                create("sonatype") {
-                    active.set(Active.ALWAYS)
-                    url.set("https://central.sonatype.com/api/v1/publisher")
-                    stagingRepository(mavenStagingDir.get().asFile.relativeTo(rootDir).path)
-                }
-            }
-        }
-    }
-}
-
-val jreleaserCreateBuildDir = tasks.register("jreleaserCreateBuildDir") {
-    group = "publishing"
-    doFirst { project.layout.buildDirectory.dir("jreleaser").get().asFile.mkdirs() }
-}
-tasks.named("jreleaserDeploy") {
-    dependsOn(jreleaserCreateBuildDir)
-}
-
-val stageMavenCentral = tasks.register("stageMavenCentral") {
-    group = "publishing"
-}
 
 val licenseAllowlistFile = rootProject.file("gradle/license/allowed-licenses.json")
 
@@ -294,24 +239,15 @@ allprojects {
 
         configure<PublishingExtension> {
             repositories {
-                val mavenUser = System.getenv("MAVEN_USERNAME")
-                val mavenPassword = System.getenv("MAVEN_PASSWORD")
-                val mavenUrl = System.getenv("MAVEN_DEPLOY_URL")
                 maven {
-                    name = "stagingMaven"
-                    url = mavenUrl?.let { uri(it) } ?: mavenStagingDir.get().asFile.toURI()
-                    if (mavenUser != null) {
-                        credentials {
-                            username = mavenUser
-                            password = mavenPassword
-                        }
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/engine-public/protoc-gen-markdown")
+                    credentials {
+                        username = System.getenv("GITHUB_ACTOR")
+                        password = System.getenv("GITHUB_TOKEN")
                     }
                 }
             }
-        }
-
-        tasks.findByName("publish")?.also { publishTask ->
-            stageMavenCentral.configure { dependsOn(publishTask) }
         }
     }
 }
@@ -367,7 +303,7 @@ graalvmNative {
 }
 
 /*
- * Per-platform native binaries are published to Maven Central as classified
+ * Per-platform native binaries are published to GitHub Packages as classified
  * artifacts on a POM-only artifact (no main jar, mirroring io.grpc:protoc-gen-grpc-java).
  * Every binary uses the .exe extension regardless of host OS, so the artifact
  * coordinates can be resolved with `:<classifier>@exe` on every platform.

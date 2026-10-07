@@ -53,9 +53,22 @@ Options are passed as `--markdown_jekyll_out=<comma-separated-options>:<outdir>`
 
 Configure the [`protobuf-gradle-plugin`](https://github.com/google/protobuf-gradle-plugin) to invoke both plugins into the same output directory, with the layout options mirrored.
 
+Both plugins are published to GitHub Packages from this repository; see the [root README](../README.md#gradle) for the `read:packages` token the repository below requires.
+
 ```kotlin
 plugins {
     id("com.google.protobuf") version "0.9.6"
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/engine-public/protoc-gen-markdown")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).get()
+            password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).get()
+        }
+    }
 }
 
 protobuf {
