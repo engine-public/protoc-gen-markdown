@@ -92,7 +92,7 @@ graalvmNative {
 }
 
 /*
- * Per-platform native binaries are published to Maven Central as classified
+ * Per-platform native binaries are published to GitHub Packages as classified
  * artifacts on a POM-only artifact (no main jar, mirroring io.grpc:protoc-gen-grpc-java).
  * Every binary uses the .exe extension regardless of host OS, so the artifact
  * coordinates can be resolved with `:<classifier>@exe` on every platform.
