@@ -12,6 +12,8 @@ import com.engine.protoc.util.enums.EnumDescriptorProtoWrapper
 import com.engine.protoc.util.enums.EnumValueDescriptorProtoWrapper
 import com.engine.protoc.util.file.FileDescriptorProtoWrapper
 import com.engine.protoc.util.file.SourceCodeInfoWrapper
+import com.engine.protoc.util.markdown.ReferenceLinkFailure
+import com.engine.protoc.util.markdown.ReferenceLinkProcessor
 import com.engine.protoc.util.message.DescriptorProtoWrapper
 import com.engine.protoc.util.message.FieldDescriptorProtoWrapper
 import com.engine.protoc.util.service.MethodDescriptorProtoWrapper
@@ -151,17 +153,16 @@ internal class Compiler(
 
     /**
      * Fixed [LinkProcessor] installed on the shared [parser] that delegates each parsed link
-     * to whichever [ReferenceLinkResolver] owns the current document.  Constructed once per
-     * compiler so the parser itself can stay a single instance even as [currentResolver] is
-     * rebuilt per output document; per-comment scope flows through `setCurrentScope` /
-     * `clearCurrentScope` on the active resolver, set by [appendLeadingComment] and
-     * [summaryDescriptionCell] around each parse call.  When no resolver is active (NONE
-     * mode), the processor returns [LinkResult.none] so the core CommonMark processor
+     * to whichever reference-link processor owns the current document.  Constructed once per
+     * compiler so the parser itself can stay a single instance even as [currentReferenceLinks] is
+     * rebuilt per output document; per-comment scope flows through `withScope` on the active
+     * processor, set by [parseUnderScope] around each parse call.  When no processor is active
+     * (NONE mode), the delegate returns [LinkResult.none] so the core CommonMark processor
      * handles links exactly as if no override were installed.
      */
     private val linkProcessor: LinkProcessor =
         LinkProcessor { linkInfo, scanner, ctx ->
-            currentResolver?.linkProcessor?.process(linkInfo, scanner, ctx) ?: LinkResult.none()
+            currentReferenceLinks?.process(linkInfo, scanner, ctx) ?: LinkResult.none()
         }
     private val parser: Parser =
         Parser.builder()
@@ -199,13 +200,13 @@ internal class Compiler(
     private var bodyLevelShift: Int = 0
 
     /**
-     * Per-output-document [ReferenceLinkResolver], constructed at the top of [outlineDocument]
-     * with `currentMd` bound to that document's filename so the resolver can produce both bare
-     * `#anchor` hrefs (target lives in the same consolidated file) and relative-path hrefs
-     * (target lives in a sibling output file).  `null` when [ProtocGenMarkdown.Options.resolveReferenceLinks]
-     * is off, in which case [appendLeadingComment] skips the rewrite step entirely.
+     * Per-output-document reference-link processor, constructed at the top of [outlineDocument]
+     * with `currentMd` bound to that document's filename so it can produce both bare `#anchor`
+     * hrefs (target lives in the same consolidated file) and relative-path hrefs (target lives in
+     * a sibling output file).  `null` when [ProtocGenMarkdown.Options.resolveReferenceLinksMode]
+     * is `NONE`, in which case links are left to the core CommonMark parser.
      */
-    private var currentResolver: ReferenceLinkResolver? = null
+    private var currentReferenceLinks: ReferenceLinkProcessor<String>? = null
 
     /**
      * A single output `.md` file the compiler will emit: a filename plus the (one or more) input
@@ -241,10 +242,10 @@ internal class Compiler(
             log.info("includeIndices=true has no effect under outputType=SINGLE_FILE; the consolidated output is itself the aggregator")
         }
         val response = CodeGeneratorResponseWrapper()
-        val collectedFailures = mutableListOf<ReferenceLinkResolver.Failure>()
+        val collectedFailures = mutableListOf<ReferenceLinkFailure>()
         for (group in outputGroups) {
             response.addFile(group.filename, render(outlineDocument(group)))
-            currentResolver?.drainFailures()?.let { collectedFailures += it }
+            currentReferenceLinks?.drainFailures()?.let { collectedFailures += it }
         }
         for (group in packageIndexGroups) {
             response.addFile(group.filename, render(packageIndexDocument(group)))
@@ -255,7 +256,7 @@ internal class Compiler(
         if (collectedFailures.isNotEmpty() &&
             options.resolveReferenceLinksMode == ProtocGenMarkdown.Options.ResolveReferenceLinksMode.FAIL_ON_INVALID
         ) {
-            val summary = referenceLinkFailureSummary(collectedFailures.distinct())
+            val summary = ReferenceLinkFailure.summary(collectedFailures.distinct())
             log.error("protoc-gen-markdown failed:\n{}", summary)
             response.addError("protoc-gen-markdown failed:\n$summary")
         }
@@ -333,43 +334,6 @@ internal class Compiler(
         }
         return plan
     }
-
-    /**
-     * Multi-line human-readable bundle of every distinct comment-reference failure collected
-     * during compile.  Used twice at end-of-compile: once as the body of a `log.error` line that
-     * lands in stderr (and `logFile`, when configured) so the customer sees a single
-     * consolidated re-iteration alongside the per-occurrence `ERROR` lines emitted by
-     * [ReferenceLinkResolver]; once as the payload of [CodeGeneratorResponse.error] so protoc
-     * surfaces the same bundle when the plugin is run inside `protoc`.  Each bullet names the
-     * proto file, the descriptor whose comment held the bad reference, the bracketed label, and
-     * the reason (unresolved or ambiguous with the colliding candidates).  The leading count
-     * line distinguishes the singular and plural cases.
-     */
-    private fun referenceLinkFailureSummary(failures: List<ReferenceLinkResolver.Failure>): String =
-        buildString {
-            append(failures.size)
-            append(if (failures.size == 1) " reference-link failure under " else " reference-link failures under ")
-            appendLine("resolveReferenceLinksMode=FAIL_ON_INVALID:")
-            for (f in failures) {
-                append("  - ")
-                append(f.protoFile)
-                append(" :: ")
-                append(f.scopeFqn.ifEmpty { "(file scope)" })
-                append(" :: [")
-                append(f.label)
-                append("] — ")
-                when (val r = f.reason) {
-                    is ReferenceLinkResolver.FailureReason.Unresolved ->
-                        append("no matching type, field, enum value, or RPC in compile scope")
-
-                    is ReferenceLinkResolver.FailureReason.Ambiguous -> {
-                        append("ambiguous; candidates: ")
-                        append(r.candidates.joinToString("; "))
-                    }
-                }
-                appendLine()
-            }
-        }
 
     /**
      * Files this compile run will render output for: always the entries protoc named in
@@ -742,16 +706,16 @@ internal class Compiler(
     private fun outlineDocument(group: OutputGroup): Document {
         headings.clear()
         bodyLevelShift = if (group.consolidated) 1 else 0
-        currentResolver =
+        currentReferenceLinks =
             if (options.resolveReferenceLinksMode != ProtocGenMarkdown.Options.ResolveReferenceLinksMode.NONE) {
-                ReferenceLinkResolver(
+                referenceLinkProcessor(
                     scopeFiles = scopeFiles,
                     peerFiles = peerFileToGroup.keys.toList(),
-                    options = options,
+                    consolidated = options.outputType != ProtocGenMarkdown.Options.OutputType.PER_FILE,
                     fileToGroup = fileToGroup,
                     peerFileToGroup = peerFileToGroup,
                     mode = options.resolveReferenceLinksMode,
-                    referenceLinkOverrides = options.referenceLink,
+                    overrides = options.referenceLink,
                     hrefFor = { file, path -> hrefFor(file, path, group.filename) },
                 )
             } else {
@@ -1420,10 +1384,10 @@ internal class Compiler(
      * to [doc].  Treats the cleaned comment text as a CommonMark fragment, so lists, blockquotes,
      * fenced code, links, etc. round-trip through the AST and re-render correctly.
      *
-     * When [ProtocGenMarkdown.Options.resolveReferenceLinks] is on and [scopeFqn] is non-empty,
-     * the parsed AST is passed through [currentResolver]'s `rewrite` step before being spliced
-     * into [doc] — converting shortcut-reference `[name]` patterns into real [Link] nodes when
-     * the name resolves against the compile-scope's types and members.
+     * Unless [ProtocGenMarkdown.Options.resolveReferenceLinksMode] is `NONE`, reference links
+     * in the comment are resolved relative to [scopeFqn] while parsing — converting `[name]`
+     * patterns into real [Link] nodes when the name resolves against the compile scope's types
+     * and members.
      */
     private fun appendLeadingComment(
         doc: Document,
@@ -1441,22 +1405,16 @@ internal class Compiler(
     }
 
     /**
-     * Parse [text] with the active [ReferenceLinkResolver]'s scope bound to [scopeFqn] for
+     * Parse [text] with the active reference-link processor's scope bound to [scopeFqn] for
      * the duration of the parse, so bracketed references inside the comment resolve relative
-     * to the descriptor that owns it.  Scope is cleared in a `finally` so a thrown parser
-     * exception cannot leak a stale scope into the next comment.
+     * to the descriptor that owns it.
      */
     private fun parseUnderScope(
         text: String,
         scopeFqn: String,
     ): Node {
-        val resolver = currentResolver
-        resolver?.setCurrentScope(scopeFqn)
-        return try {
-            parser.parse(text)
-        } finally {
-            resolver?.clearCurrentScope()
-        }
+        val referenceLinks = currentReferenceLinks ?: return parser.parse(text)
+        return referenceLinks.withScope(scopeFqn) { parser.parse(text) }
     }
 
     // ===== Fields table =========================================================================
@@ -1615,7 +1573,7 @@ internal class Compiler(
      * honors [ProtocGenMarkdown.Options.generateStableAnchors] via [anchorFor].
      *
      * Shared by [appendTypeReference] (field-type cells, RPC-input/output cells) and
-     * [ReferenceLinkResolver] (comment-body references) so the two paths can't drift on the
+     * [referenceLinkProcessor] (comment-body references) so the two paths can't drift on the
      * "where does this target live" rules.
      */
     internal fun hrefFor(
