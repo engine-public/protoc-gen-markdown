@@ -74,19 +74,19 @@ ___
 Exercises three reference-link syntax forms the resolver supports beyond the canonical
 `[label]` shortcut:
 
- 1. CommonMark full reference form `[display text][label]`.
-    See the `submit` RPC below: `[Status.details][google.rpc.Status]` is rendered with
-    `Status.details` as the visible link text and the URL drawn from the
-    `referenceLink=google.rpc.Status=...` override the suite passes — the display text is
-    NOT itself resolved.
- 2. Backslash-escaped brackets `\[...\]`.
-    See [Holder.tags](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-tags): the escaped `\["a", "b"\]` in the comment survives as literal text
-    in the rendered output, with the brackets preserved and no resolver attempt.
- 3. Field-scope bare-name resolution against the field's declared type.
-    See [Holder.responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-responsive): although the package declares two `Responsive` messages (one
-    nested inside `Holder`, one at the top level here), `[Responsive]` in the field's
-    comment resolves to the specific message the field's type points at — local context
-    wins over the otherwise-ambiguous global short name.
+1. CommonMark full reference form `[display text][label]`.
+   See the `submit` RPC below: `[Status.details][google.rpc.Status]` is rendered with
+   `Status.details` as the visible link text and the URL drawn from the
+   `referenceLink=google.rpc.Status=...` override the suite passes — the display text is
+   NOT itself resolved.
+2. Backslash-escaped brackets `\[...\]`.
+   See [Holder.tags](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-tags): the escaped `\["a", "b"\]` in the comment survives as literal text
+   in the rendered output, with the brackets preserved and no resolver attempt.
+3. Field-scope bare-name resolution against the field's declared type.
+   See [Holder.responsive](syntax.md#engine_protoc_markdown_example_referencelinksyntax_syntax_proto-Messages-Holder-Field_Details-responsive): although the package declares two `Responsive` messages (one
+   nested inside `Holder`, one at the top level here), `[Responsive]` in the field's
+   comment resolves to the specific message the field's type points at — local context
+   wins over the otherwise-ambiguous global short name.
 
 <!-- @@protoc_insertion_point(message_scope:engine.protoc.markdown.example.referencelinksyntax.Holder) -->
 

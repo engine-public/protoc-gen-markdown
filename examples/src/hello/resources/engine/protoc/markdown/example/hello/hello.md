@@ -70,8 +70,8 @@ Minimal proto: one message and one service.
 
 Runs the compiler at its defaults so the generated fixtures act as a baseline for the per-option suites alongside this one.
 
- * a bulleted list
- * with at least two items
+* a bulleted list
+* with at least two items
 
 <!-- @@protoc_insertion_point(message_scope:engine.protoc.markdown.example.hello.GreetingRequest) -->
 
@@ -94,10 +94,10 @@ It includes two paragraphs.
 
 [a link](https://example.com)
 
- * and
- * a
- * bulleted
- * list
+* and
+* a
+* bulleted
+* list
 
 ##### <a id="engine_protoc_markdown_example_hello_hello_proto-Messages-GreetingRequest-Field_Details-type"></a>type
 

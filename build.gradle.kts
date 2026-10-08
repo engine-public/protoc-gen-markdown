@@ -66,6 +66,7 @@ val licenseAllowlistFile = rootProject.file("gradle/license/allowed-licenses.jso
 
 dependencies {
     implementation(libs.engine.protoc.utils)
+    implementation(libs.engine.protoc.utils.markdown)
     implementation(libs.protobuf.java)
     implementation(libs.commonmark)
     implementation(libs.commonmark.ext.gfm.tables)
