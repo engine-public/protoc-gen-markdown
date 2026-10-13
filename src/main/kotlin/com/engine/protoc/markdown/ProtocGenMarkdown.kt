@@ -4,6 +4,7 @@ import com.engine.protoc.markdown.compile.Compiler
 import com.engine.protoc.util.compiler.CodeGeneratorRequestWrapper
 import com.engine.protoc.util.compiler.Parameters
 import com.engine.protoc.util.extensions.wrap
+import com.engine.protoc.util.markdown.ReferenceLinkProcessor
 import com.google.protobuf.ExtensionRegistry
 import com.google.protobuf.compiler.PluginProtos
 import org.apache.logging.log4j.core.appender.ConsoleAppender
@@ -508,17 +509,7 @@ public class ProtocGenMarkdown(
                 parameters.get<TransitiveReferences>("transitiveReferences") ?: TransitiveReferences.LINK_AS_PEER
 
             public var referenceLink: Map<String, String> =
-                parameters.get<List<String>>("referenceLink")?.let { entries ->
-                    val map = LinkedHashMap<String, String>()
-                    for (entry in entries) {
-                        val idx = entry.indexOf('=')
-                        require(idx > 0 && idx < entry.length - 1) {
-                            "referenceLink entry must be of the form <label>=<URL>, got `$entry`"
-                        }
-                        map[entry.substring(0, idx)] = entry.substring(idx + 1)
-                    }
-                    map
-                } ?: emptyMap()
+                ReferenceLinkProcessor.parseOverrides(parameters.get<List<String>>("referenceLink"))
 
             public companion object {
                 public fun from(parameters: Parameters): Builder = Builder(parameters)

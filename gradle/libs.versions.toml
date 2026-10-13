@@ -2,7 +2,7 @@
 kotlin = "2.3.20"
 protobuf = "4.34.1"
 kotest = "6.1.4"
-engine-protoc-utils = "1.0.3"
+engine-protoc-utils = "1.1.0"
 graalvm-sdk = "23.1.2"
 commonmark = "0.28.0"
 log4j = "2.26.1"
@@ -27,6 +27,7 @@ license-report = { id = "com.github.jk1.dependency-license-report", version.ref 
 
 [libraries]
 engine-protoc-utils = { group = "com.engine", name = "protoc-utils", version.ref = "engine-protoc-utils" }
+engine-protoc-utils-markdown = { group = "com.engine", name = "protoc-utils-markdown", version.ref = "engine-protoc-utils" }
 protobuf-java = { group = "com.google.protobuf", name = "protobuf-java", version.ref = "protobuf" }
 graalvm-sdk = { group = "org.graalvm.sdk", name = "graal-sdk", version.ref = "graalvm-sdk" }
 commonmark = { group = "org.commonmark", name = "commonmark", version.ref = "commonmark" }
