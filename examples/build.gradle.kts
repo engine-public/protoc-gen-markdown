@@ -26,6 +26,7 @@ val suiteRecorderOptions =
         "generateInsertionPointsOff" to listOf("generateInsertionPoints=false"),
         "tableOfContentsHeadersWide" to listOf("minTableOfContentsHeader=1", "maxTableOfContentsHeader=5"),
         "outputTypePerPackage" to listOf("outputType=PER_PACKAGE", "maxTableOfContentsHeader=4"),
+        "dialectKramdown" to listOf("dialect=KRAMDOWN"),
         "includeIndicesOff" to listOf("includeIndices=false"),
         "outputTypeSingleFile" to listOf("outputType=SINGLE_FILE", "maxTableOfContentsHeader=4"),
         "typeSortModeEncounter" to listOf("typeSortMode=ENCOUNTER"),
