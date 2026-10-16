@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package engine.protoc.markdown.example.dialectkramdown;
+
+option java_package = "com.engine.protoc.markdown.example.dialectkramdown";
+option java_multiple_files = true;
+
+// Core domain definitions for the package.
+//
+// Exercises `dialect=KRAMDOWN`: the Table of Contents `<details>` element carries
+// `markdown="block"` so kramdown renders the TOC list instead of showing it as literal
+// text.  The default `dialect=COMMONMARK` emits a bare `<details>`.
+
+// A user of the system.
+message User {
+    // Stable identifier.
+    string id = 1;
+
+    // Display name.
+    string name = 2;
+
+    // The user's role in the system.
+    UserRole role = 3;
+}
+
+// The role a user is assigned.
+enum UserRole {
+    USER_ROLE_UNSPECIFIED = 0;
+    USER_ROLE_MEMBER = 1;
+    USER_ROLE_ADMIN = 2;
+}
+
+// Read and mutate user records.
+service UserService {
+    // Look up a user by id.
+    rpc GetUser(GetUserRequest) returns (User);
+}
+
+message GetUserRequest {
+    string id = 1;
+}

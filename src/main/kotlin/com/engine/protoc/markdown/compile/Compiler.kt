@@ -1067,7 +1067,9 @@ internal class Compiler(
         if (filtered.isEmpty()) return
 
         val list = buildHeadingBulletList(filtered)
-        for (node in listOf(htmlBlock("<details>\n<summary>Table of contents</summary>"), list, htmlBlock("</details>")).reversed()) {
+        // kramdown only parses markdown inside a raw HTML block when the element opts in.
+        val detailsTag = if (options.dialect == ProtocGenMarkdown.Options.Dialect.KRAMDOWN) "<details markdown=\"block\">" else "<details>"
+        for (node in listOf(htmlBlock("$detailsTag\n<summary>Table of contents</summary>"), list, htmlBlock("</details>")).reversed()) {
             anchor.insertAfter(node)
         }
     }
@@ -1216,6 +1218,7 @@ internal class Compiler(
         parts += "generateInsertionPoints" to options.generateInsertionPoints.toString()
         parts += "minTableOfContentsHeader" to (options.minTableOfContentsHeader?.toString() ?: "null")
         parts += "maxTableOfContentsHeader" to (options.maxTableOfContentsHeader?.toString() ?: "null")
+        parts += "dialect" to options.dialect.name
         parts += "outputType" to options.outputType.name
         parts += "includeIndices" to options.includeIndices.toString()
         parts += "typeSortMode" to options.typeSortMode.name

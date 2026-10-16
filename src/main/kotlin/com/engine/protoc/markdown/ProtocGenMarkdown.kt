@@ -133,6 +133,19 @@ public class ProtocGenMarkdown(
          */
         public val maxTableOfContentsHeader: Int?,
         /**
+         * Markdown processor the generated documents are written for.  Selects renderer-specific
+         * syntax extensions; the default [Dialect.COMMONMARK] emits only portable CommonMark and
+         * standard HTML.
+         *
+         *  - [Dialect.COMMONMARK] (the default) — no processor-specific syntax.
+         *  - [Dialect.KRAMDOWN] — adds the `markdown="block"` attribute to the Table of Contents
+         *    `<details>` element.  kramdown does not process markdown inside a raw HTML block
+         *    unless the element opts in, so without it the TOC list renders as literal text.
+         *    Other processors ignore the attribute, but strict HTML validators flag it, which is
+         *    why it is not emitted by default.
+         */
+        public val dialect: Dialect,
+        /**
          * Selects how input files are mapped to output files.
          *
          *  - [OutputType.PER_FILE] (the default) — one `.md` per input proto, mirroring the input
@@ -442,6 +455,9 @@ public class ProtocGenMarkdown(
         public val referenceLink: Map<String, String>,
     ) {
 
+        /** Markdown processor selected by [Options.dialect]. */
+        public enum class Dialect { COMMONMARK, KRAMDOWN }
+
         /** Output-file shape selected by [Options.outputType]. */
         public enum class OutputType { PER_FILE, PER_PACKAGE, SINGLE_FILE }
 
@@ -484,6 +500,8 @@ public class ProtocGenMarkdown(
 
             public var maxTableOfContentsHeader: Int? = parameters.get<Int>("maxTableOfContentsHeader") ?: 3
 
+            public var dialect: Dialect = parameters.get<Dialect>("dialect") ?: Dialect.COMMONMARK
+
             public var outputType: OutputType = parameters.get<OutputType>("outputType") ?: OutputType.PER_FILE
 
             public var includeIndices: Boolean = parameters.get<Boolean>("includeIndices") ?: true
@@ -521,6 +539,7 @@ public class ProtocGenMarkdown(
                     generateInsertionPoints = generateInsertionPoints,
                     minTableOfContentsHeader = minTableOfContentsHeader,
                     maxTableOfContentsHeader = maxTableOfContentsHeader,
+                    dialect = dialect,
                     outputType = outputType,
                     includeIndices = includeIndices,
                     logLevel = logLevel,
